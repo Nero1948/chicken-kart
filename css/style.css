@@ -1,0 +1,421 @@
+/* Chicken Kart UI styles */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  font-family: 'Baloo 2', system-ui, sans-serif;
+  background: #87ceeb;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#game {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.hidden { display: none !important; }
+
+/* ---------- Full-page screens ---------- */
+
+.screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  text-align: center;
+  padding: 24px;
+  z-index: 10;
+}
+
+#select, #results {
+  background: rgba(20, 40, 25, 0.55);
+  backdrop-filter: blur(3px);
+}
+
+.title {
+  font-size: clamp(56px, 12vw, 120px);
+  font-weight: 800;
+  line-height: 0.95;
+  color: #fff;
+  -webkit-text-stroke: 3px #b3541e;
+  text-shadow: 0 6px 0 #b3541e, 0 12px 24px rgba(0,0,0,0.35);
+  animation: bob 2.4s ease-in-out infinite;
+}
+
+@keyframes bob {
+  0%, 100% { transform: translateY(0) rotate(-1.5deg); }
+  50% { transform: translateY(-12px) rotate(1.5deg); }
+}
+
+.subtitle {
+  font-size: clamp(18px, 3vw, 28px);
+  font-weight: 700;
+  color: #fff7e0;
+  text-shadow: 0 2px 6px rgba(0,0,0,0.4);
+}
+
+.screen-heading {
+  font-size: clamp(28px, 5vw, 48px);
+  font-weight: 800;
+  color: #fff;
+  text-shadow: 0 3px 0 rgba(0,0,0,0.3);
+}
+
+.big-btn {
+  font-family: inherit;
+  font-size: clamp(20px, 3.5vw, 32px);
+  font-weight: 800;
+  padding: 14px 52px;
+  border: none;
+  border-radius: 999px;
+  background: #ffb300;
+  color: #5a3000;
+  cursor: pointer;
+  box-shadow: 0 6px 0 #c77f00, 0 12px 20px rgba(0,0,0,0.25);
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.big-btn:hover { transform: translateY(-2px) scale(1.04); }
+.big-btn:active { transform: translateY(3px); box-shadow: 0 2px 0 #c77f00; }
+.big-btn.alt { background: #e8e8e8; color: #444; box-shadow: 0 6px 0 #a8a8a8, 0 12px 20px rgba(0,0,0,0.25); }
+.big-btn.alt:active { box-shadow: 0 2px 0 #a8a8a8; }
+
+.btn-row { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; }
+
+.controls-hint {
+  display: flex;
+  gap: 28px;
+  font-size: 17px;
+  color: #fff;
+  background: rgba(0,0,0,0.3);
+  padding: 10px 22px;
+  border-radius: 999px;
+}
+
+/* ---------- Difficulty selector ---------- */
+
+.diff-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.diff-label {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #fff7e0;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.45);
+}
+
+.diff-btns {
+  display: flex;
+  gap: 8px;
+  background: rgba(0,0,0,0.3);
+  padding: 6px;
+  border-radius: 999px;
+}
+
+.diff-btn {
+  font-family: inherit;
+  font-size: clamp(15px, 2.2vw, 19px);
+  font-weight: 800;
+  padding: 8px 22px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+  transition: transform 0.1s, background 0.1s, color 0.1s;
+}
+
+.diff-btn:hover { transform: scale(1.05); }
+
+.diff-btn.active {
+  background: #ffb300;
+  color: #5a3000;
+  box-shadow: 0 3px 0 #c77f00;
+}
+
+/* Track selector reuses the difficulty pill styling but allows two longer
+   labels to sit side by side, wrapping on very narrow screens. */
+.track-btns { flex-wrap: wrap; max-width: min(92vw, 560px); justify-content: center; }
+.track-btn { font-size: clamp(14px, 2vw, 18px); }
+
+/* ---------- Character select cards ---------- */
+
+#cards {
+  display: flex;
+  gap: 22px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.card {
+  width: 230px;
+  background: #fffdf5;
+  border-radius: 22px;
+  padding: 18px 18px 22px;
+  cursor: pointer;
+  border: 4px solid transparent;
+  box-shadow: 0 10px 24px rgba(0,0,0,0.3);
+  transition: transform 0.12s, border-color 0.12s;
+  text-align: center;
+}
+
+.card:hover {
+  transform: translateY(-8px) scale(1.03);
+  border-color: #ffb300;
+}
+
+.card-face {
+  position: relative;
+  width: 110px;
+  height: 110px;
+  margin: 0 auto 10px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 64px;
+}
+
+.card-face .hat {
+  position: absolute;
+  top: -16px;
+  font-size: 34px;
+}
+
+.card-name {
+  font-size: 24px;
+  font-weight: 800;
+  color: #4a3015;
+}
+
+.card-tag {
+  font-size: 14px;
+  color: #7a6a50;
+  min-height: 38px;
+  margin: 2px 0 10px;
+  line-height: 1.25;
+}
+
+.stat { display: flex; align-items: center; gap: 8px; margin: 5px 0; }
+.stat-label { width: 78px; font-size: 12.5px; font-weight: 700; color: #6a5a40; text-align: right; }
+.stat-bar { flex: 1; height: 10px; background: #eee2c8; border-radius: 99px; overflow: hidden; }
+.stat-fill { height: 100%; border-radius: 99px; background: linear-gradient(90deg, #ffb300, #ff7a00); }
+
+/* ---------- HUD ---------- */
+
+#hud > * { position: fixed; z-index: 5; }
+
+#position {
+  top: 18px;
+  left: 22px;
+  font-size: clamp(40px, 6vw, 64px);
+  font-weight: 800;
+  color: #fff;
+  -webkit-text-stroke: 2px #2a5a18;
+  text-shadow: 0 4px 0 #2a5a18, 0 8px 16px rgba(0,0,0,0.3);
+}
+
+#lap {
+  top: clamp(70px, 10vw, 96px);
+  left: 24px;
+  font-size: clamp(18px, 2.5vw, 26px);
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+}
+
+#itemSlot {
+  top: 18px;
+  right: 22px;
+  width: 84px;
+  height: 84px;
+  border-radius: 20px;
+  background: rgba(255,255,255,0.25);
+  border: 4px solid rgba(255,255,255,0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 46px;
+  box-shadow: 0 6px 14px rgba(0,0,0,0.25);
+}
+
+#minimap {
+  bottom: 18px;
+  right: 18px;
+  background: rgba(0, 0, 0, 0.30);
+  border-radius: 16px;
+  border: 3px solid rgba(255,255,255,0.5);
+}
+
+#wrongway {
+  top: 22vh;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: clamp(30px, 5vw, 52px);
+  font-weight: 800;
+  color: #ff3b3b;
+  -webkit-text-stroke: 2px #fff;
+  text-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  animation: flash 0.5s steps(2) infinite;
+}
+
+@keyframes flash { 50% { opacity: 0.15; } }
+
+#countdown {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(110px, 22vw, 240px);
+  font-weight: 800;
+  color: #fff;
+  -webkit-text-stroke: 4px #b3541e;
+  text-shadow: 0 10px 0 #b3541e, 0 18px 40px rgba(0,0,0,0.35);
+  z-index: 8;
+  pointer-events: none;
+  animation: pop 0.5s ease-out;
+}
+
+@keyframes pop {
+  0% { transform: scale(2.2); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* ---------- Results ---------- */
+
+#placings {
+  list-style: none;
+  background: #fffdf5;
+  border-radius: 22px;
+  padding: 18px 30px;
+  min-width: min(420px, 86vw);
+  box-shadow: 0 12px 30px rgba(0,0,0,0.35);
+}
+
+#placings li {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: clamp(18px, 3vw, 26px);
+  font-weight: 700;
+  color: #4a3a20;
+  padding: 9px 6px;
+  border-bottom: 2px dashed #eadfc4;
+}
+
+#placings li:last-child { border-bottom: none; }
+#placings li .medal { width: 44px; text-align: center; font-size: 1.2em; }
+#placings li.you { background: #fff1c4; border-radius: 12px; }
+#placings li .you-tag {
+  margin-left: auto;
+  font-size: 0.65em;
+  background: #ffb300;
+  color: #5a3000;
+  padding: 2px 12px;
+  border-radius: 99px;
+}
+
+/* ---------- Mute button ---------- */
+
+#muteBtn {
+  position: fixed;
+  bottom: 16px;
+  left: 16px;
+  z-index: 20;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: 3px solid rgba(255,255,255,0.7);
+  background: rgba(0,0,0,0.35);
+  font-size: 24px;
+  cursor: pointer;
+}
+
+@media (max-width: 600px) {
+  #minimap { width: 100px; height: 100px; }
+  #itemSlot { width: 64px; height: 64px; font-size: 34px; }
+}
+
+/* ---------- Touch controls (mobile) ---------- */
+
+#game { touch-action: none; -webkit-tap-highlight-color: transparent; }
+
+#touch {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 6;
+  display: none;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding: 0 18px 18px;
+  padding-bottom: calc(18px + env(safe-area-inset-bottom));
+  padding-left: calc(18px + env(safe-area-inset-left));
+  padding-right: calc(18px + env(safe-area-inset-right));
+  pointer-events: none; /* gaps stay click-through; buttons re-enable below */
+}
+
+/* Only ever visible on touch devices, and only while racing */
+body.touch #touch:not(.hidden) { display: flex; }
+
+.touch-steer,
+.touch-drive { display: flex; gap: 12px; align-items: flex-end; }
+.drive-col { display: flex; flex-direction: column; gap: 12px; }
+
+.tbtn {
+  pointer-events: auto;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  width: 74px;
+  height: 74px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.7);
+  background: rgba(0, 0, 0, 0.34);
+  color: #fff;
+  font-size: 30px;
+  font-weight: 800;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.tbtn.gas { width: 92px; height: 92px; font-size: 38px; }
+.tbtn.small { width: 58px; height: 58px; font-size: 26px; }
+
+.tbtn.pressed {
+  background: rgba(255, 179, 0, 0.78);
+  color: #3a2400;
+  transform: scale(0.94);
+}
+
+@media (max-width: 360px) {
+  .tbtn { width: 64px; height: 64px; font-size: 26px; }
+  .tbtn.gas { width: 80px; height: 80px; }
+  .tbtn.small { width: 52px; height: 52px; font-size: 22px; }
+}
+
+/* Re-flow the racing HUD on touch so it never sits under the controls */
+body.touch #itemSlot { top: 12px; right: 12px; width: 58px; height: 58px; font-size: 30px; }
+body.touch #muteBtn { top: 18px; right: 80px; left: auto; bottom: auto; width: 46px; height: 46px; font-size: 22px; }
+body.touch #minimap { top: 78px; right: 12px; bottom: auto; width: 86px; height: 86px; }
