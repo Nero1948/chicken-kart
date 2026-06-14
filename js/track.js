@@ -42,25 +42,32 @@ const FARM_PTS = [
   [-46, -78],      // 20 sweep down to the start line
 ];
 
-// Chickens in the City: a wide oval through the streets whose top straight is
-// the Harbour Bridge, arcing over the water to the north.
+// Chickens in the City: a technical street circuit. The bottom has a tight
+// chicane, the east straight carries a road works lane closure, the top straight
+// is the Harbour Bridge over the water, and the south-west corner is a tight
+// left-hander back onto the main street.
 const CITY_PTS = [
-  [0, -100],       // 0  start / finish (bottom: the main street)
-  [64, -96],       // 1
-  [116, -76],      // 2
-  [146, -40],      // 3
-  [152, 4],        // 4  east straight
-  [140, 44],       // 5  north-east sweep
-  [104, 72],       // 6  bridge approach (rising, east end)
-  [58, 88],        // 7  bridge deck
-  [0, 92],         // 8  bridge midpoint (high over the harbour)
-  [-58, 88],       // 9  bridge deck
-  [-104, 72],      // 10 bridge approach (descending, west end)
-  [-140, 44],      // 11 north-west sweep
-  [-152, 4],       // 12 west straight
-  [-146, -40],     // 13
-  [-116, -76],     // 14
-  [-64, -96],      // 15 sweep down to the start line
+  [0, -100],       // 0  start / finish (bottom: the main street), heading east
+  [44, -100],      // 1  start straight (kept flat for the grid)
+  [82, -98],       // 2  chicane approach
+  [106, -84],      // 3  chicane: jog north (left flick)
+  [128, -100],     // 4  chicane: jog south (right flick) -> tight S-bend
+  [152, -76],      // 5  swing up onto the east straight
+  [158, -40],      // 6  east straight (road works lane closure here)
+  [158, 4],        // 7  east straight
+  [138, 40],       // 8  north-east sweep
+  [102, 66],       // 9  bridge approach (rising, east end)
+  [54, 86],        // 10 bridge deck
+  [0, 90],         // 11 bridge midpoint (high over the harbour)
+  [-54, 86],       // 12 bridge deck
+  [-102, 66],      // 13 bridge approach (descending, west end)
+  [-140, 40],      // 14 north-west sweep
+  [-158, 2],       // 15 west straight
+  [-156, -40],     // 16 west straight, lower
+  [-146, -74],     // 17 tight left-hander apex
+  [-110, -86],     // 18 corner exit kink
+  [-70, -98],      // 19 onto the bottom straight
+  [-34, -101],     // 20 sweep back to the start line
 ];
 
 /* ------------------------- the shared track object ------------------------- */
@@ -84,6 +91,7 @@ export const track = {
   tunnel: null,    // farm: { startIdx, endIdx, depth } the underground tunnel dip
   ramp: null,      // farm: { startIdx, lipIdx, height } the jump ramp
   bridge: null,    // city: { startIdx, endIdx, deckHeight } the Harbour Bridge arch
+  roadworks: null, // city: { startIdx, endIdx, coneSide, openOffset } lane closure
   specialBoxes: [], // [{ pos }] where the sparkly pink llama boxes sit
 };
 
@@ -155,6 +163,7 @@ function resetTrack() {
   track.tunnel = null;
   track.ramp = null;
   track.bridge = null;
+  track.roadworks = null;
   track.specialBoxes = [];
   track.length = 0;
 }
@@ -235,6 +244,13 @@ function idxInRange(i, a, b) {
 export function inSplitZone(idx) {
   const sp = track.split;
   return sp ? idxInRange(idx, sp.startIdx - 16, sp.endIdx) : false;
+}
+
+// True while a kart is in (or approaching) the city road works lane closure, so
+// AI drivers move over to the open lane before reaching the cones.
+export function inRoadworks(idx) {
+  const r = track.roadworks;
+  return r ? idxInRange(idx, r.startIdx - 12, r.endIdx) : false;
 }
 
 // True while a kart is inside the barn (right-hand lane of the split). Used to
@@ -896,6 +912,7 @@ const SKY_TOWER = new THREE.Vector3(-6, 0, -16);
 
 function buildCity(group) {
   computeBridge();
+  computeRoadworks();
   buildHarbour(group);
   buildCityGround(group);
   buildRoad(group, { color: 0x3b4046, shadeAmt: 0.07, followY: true, seed: 11 });
@@ -905,16 +922,39 @@ function buildCity(group) {
   buildStartLine(group);
   buildRoadside(group, { offset: 11, postW: 0.22, postH: 0.9, rails: [0.62], color: 0x9aa1a6, skipElevated: true });
   buildBridge(group);
+  buildRoadworks(group);
   buildSkyTower(group);
   buildBuildings(group);
   buildStreetlights(group);
   buildBanner(group, 'CHICKENS IN THE CITY', '#1b6fb3');
   buildClouds(group, 5);
-  setBoxSpots([0.05, 0.25, 0.72, 0.90]);  // kept clear of the bridge crest (~0.5)
+  // Box rows kept clear of the bridge crest (~0.5), the chicane and the cones.
+  setBoxSpots([0.06, 0.36, 0.65, 0.93]);
   track.specialBoxes = [
-    { pos: track.samples[Math.floor(0.15 * N)].pos.clone() },
-    { pos: track.samples[Math.floor(0.80 * N)].pos.clone() },
+    { pos: track.samples[Math.floor(0.46 * N)].pos.clone() },  // on the bridge
+    { pos: track.samples[Math.floor(0.70 * N)].pos.clone() },
   ];
+}
+
+// Find the east straight (high +x, heading north) and close one lane for road
+// works, leaving an open lane on the inside that drivers must merge into.
+function computeRoadworks() {
+  let best = { s: 0, e: -1, len: 0 };
+  let runStart = -1;
+  for (let i = 0; i < N; i++) {
+    const s = track.samples[i];
+    const on = s.pos.x > 142 && s.tan.z > 0.75;
+    if (on && runStart < 0) runStart = i;
+    if ((!on || i === N - 1) && runStart >= 0) {
+      const end = on ? i : i - 1;
+      if (end - runStart > best.len) best = { s: runStart, e: end, len: end - runStart };
+      runStart = -1;
+    }
+  }
+  if (best.len < 14) { track.roadworks = null; return; }
+  const pad = Math.floor(best.len * 0.16);
+  // coneSide +1 closes the outer (right) lane; openOffset steers onto the inside.
+  track.roadworks = { startIdx: best.s + pad, endIdx: best.e - pad, coneSide: 1, openOffset: -3.6 };
 }
 
 // Find the top straight (samples north of z=50) and make it the bridge.
@@ -1071,6 +1111,117 @@ function buildArchBraces(group, left, right, mat) {
   for (let i = 3; i < n - 3; i += 3) {
     strut(group, left[i].p, right[i].p, 0.32, mat);
   }
+}
+
+/* ------------------------- road works ------------------------- */
+
+// A lane closure on the east straight: a line of traffic cones tapers in from
+// the outer edge to the centre and back out, with a striped barrier board and
+// a gravel patch in the closed lane. Cones are solid (added to track.bales) and
+// the gravel is a slow zone, so clipping the works costs you.
+function buildRoadworks(group) {
+  const rw = track.roadworks;
+  if (!rw) return;
+  const g = new THREE.Group();
+  const idxs = rangeIndices(rw.startIdx, rw.endIdx);
+  const n = idxs.length;
+  const taper = Math.max(4, Math.floor(n * 0.28));
+  const coneGeo = new THREE.ConeGeometry(0.5, 1.1, 12);
+  const baseGeo = new THREE.BoxGeometry(0.85, 0.12, 0.85);
+  const orange = lambert(0xff7518);
+  const stripe = lambert(0xf3f3f3);
+  const base = lambert(0x33373d);
+
+  // Lateral offset of the cone line at step i: tapers from the outer edge in to
+  // the centre, runs along the lane divider, then tapers back out.
+  const laneLat = (i) => {
+    let t;
+    if (i < taper) t = i / taper;                       // taper in
+    else if (i > n - 1 - taper) t = (n - 1 - i) / taper; // taper out
+    else t = 1;                                          // along the divider
+    return rw.coneSide * (6.4 - t * 5.8); // 6.4 at the edge -> 0.6 at the divider
+  };
+
+  for (let i = 0; i < n; i += 2) {
+    const idx = idxs[i];
+    const s = track.samples[idx];
+    const lat = laneLat(i);
+    const p = latPoint(s, lat);
+    const y = surfaceY(idx, lat);
+    const cone = new THREE.Mesh(coneGeo, orange);
+    cone.position.set(p.x, y + 0.55, p.z);
+    cone.castShadow = true;
+    g.add(cone);
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.42, 0.18, 12), stripe);
+    band.position.set(p.x, y + 0.6, p.z);
+    g.add(band);
+    const foot = new THREE.Mesh(baseGeo, base);
+    foot.position.set(p.x, y + 0.06, p.z);
+    g.add(foot);
+    track.bales.push({ pos: new THREE.Vector3(p.x, 0, p.z), r: 0.55 });
+  }
+
+  // Gravel slow patch in the middle of the closed lane.
+  const midS = track.samples[idxs[Math.floor(n / 2)]];
+  const gravelPos = latPoint(midS, rw.coneSide * 4.2);
+  const gravel = new THREE.Mesh(new THREE.CircleGeometry(4.0, 20), lambert(0x6b6256));
+  gravel.rotation.x = -Math.PI / 2;
+  gravel.position.set(gravelPos.x, surfaceY(idxs[Math.floor(n / 2)], 0) + 0.03, gravelPos.z);
+  g.add(gravel);
+  track.mud.push({ pos: new THREE.Vector3(gravelPos.x, 0, gravelPos.z), r: 4.0 });
+
+  // Striped barrier board where the closure begins, facing oncoming karts.
+  buildBarrierBoard(g, idxs[Math.max(0, taper - 2)], rw.coneSide * 4.0);
+
+  // A couple of works props on the closed shoulder for flavour (off the road).
+  const propS = track.samples[idxs[Math.floor(n * 0.5)]];
+  const dirtPos = latPoint(propS, rw.coneSide * 8.5);
+  const dirt = new THREE.Mesh(new THREE.ConeGeometry(1.6, 1.6, 10), lambert(0x7a6a4f));
+  dirt.position.set(dirtPos.x, 0.8, dirtPos.z);
+  dirt.castShadow = true;
+  g.add(dirt);
+  const hutPos = latPoint(track.samples[idxs[Math.floor(n * 0.35)]], rw.coneSide * 9.2);
+  const hut = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.6, 2.4), lambert(0xe0a83c));
+  hut.position.set(hutPos.x, 1.3, hutPos.z);
+  hut.castShadow = true;
+  g.add(hut);
+
+  group.add(g);
+}
+
+function buildBarrierBoard(group, idx, lateral) {
+  const s = track.samples[idx];
+  const board = new THREE.Group();
+  const post = lambert(0x33373d);
+  const canvas = document.createElement('canvas');
+  canvas.width = 256; canvas.height = 96;
+  const ctx = canvas.getContext('2d');
+  // Diagonal black/orange hazard stripes with a yellow arrow.
+  for (let x = -96; x < 256; x += 28) {
+    ctx.fillStyle = '#ff7518';
+    ctx.beginPath();
+    ctx.moveTo(x, 96); ctx.lineTo(x + 14, 96); ctx.lineTo(x + 14 + 96, 0); ctx.lineTo(x + 96, 0);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#1a1a1a';
+    ctx.beginPath();
+    ctx.moveTo(x + 14, 96); ctx.lineTo(x + 28, 96); ctx.lineTo(x + 28 + 96, 0); ctx.lineTo(x + 14 + 96, 0);
+    ctx.closePath(); ctx.fill();
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  const panel = new THREE.Mesh(new THREE.BoxGeometry(3.6, 1.3, 0.18), new THREE.MeshBasicMaterial({ map: tex }));
+  panel.position.y = 1.5;
+  board.add(panel);
+  for (const side of [-1, 1]) {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 1.6, 8), post);
+    leg.position.set(side * 1.4, 0.8, 0);
+    board.add(leg);
+  }
+  const p = latPoint(s, lateral);
+  board.position.set(p.x, surfaceY(idx, lateral), p.z);
+  board.rotation.y = Math.atan2(-s.tan.x, -s.tan.z); // face oncoming traffic
+  board.castShadow = true;
+  group.add(board);
+  track.bales.push({ pos: new THREE.Vector3(p.x, 0, p.z), r: 1.6 });
 }
 
 /* ------------------------- the Sky Tower ------------------------- */

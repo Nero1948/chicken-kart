@@ -2,7 +2,7 @@
 // slows for sharp corners, uses items after a short think, and rubber-bands
 // so the race stays close and fun.
 
-import { track, inSplitZone } from './track.js';
+import { track, inSplitZone, inRoadworks } from './track.js';
 import { angleDiff } from './kart.js';
 
 export class AIDriver {
@@ -39,9 +39,11 @@ export class AIDriver {
     const lookahead = Math.floor(6 + Math.abs(kart.speed) * 0.45);
     const ti = (kart.idx + lookahead) % track.N;
     const s = track.samples[ti];
-    // Normally weave a little; on the split, commit to the tunnel or barn lane
+    // Normally weave a little; on the split, commit to a lane; through the road
+    // works, merge into the open lane so they steer around the cones.
     let lateral = Math.sin(this.time * 0.5 + this.wobble) * 2;
     if (inSplitZone(ti)) lateral = this.lanePref * track.split.laneOffset;
+    else if (inRoadworks(ti)) lateral = track.roadworks.openOffset;
     const tx = s.pos.x + s.normal.x * lateral;
     const tz = s.pos.z + s.normal.z * lateral;
 

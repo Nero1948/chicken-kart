@@ -4,7 +4,7 @@
 // where it is you can plan your line past it.
 
 import * as THREE from 'three';
-import { track, surfaceY, inSplitZone } from './track.js';
+import { track, surfaceY, inSplitZone, inRoadworks } from './track.js';
 import { audio } from './audio.js';
 
 const HIT_RADIUS = 2.6;   // how close a kart must get to clip the cow
@@ -36,7 +36,7 @@ export class Cow {
       const cand = Math.floor(Math.random() * track.N);
       const nearStart = cand < 28 || cand > track.N - 28;
       const raised = Math.abs(surfaceY(cand, 0)) > 0.05; // ramp / tunnel dip
-      if (nearStart || inSplitZone(cand) || raised) continue;
+      if (nearStart || inSplitZone(cand) || inRoadworks(cand) || raised) continue;
       idx = cand;
       break;
     }
