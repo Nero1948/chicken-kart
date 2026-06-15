@@ -39,7 +39,15 @@ html, body {
 #select, #results {
   background: rgba(20, 40, 25, 0.55);
   backdrop-filter: blur(3px);
+  /* Centre the content when it fits, but allow scrolling when it is taller
+     than the screen (e.g. a full Grand Prix standings list) without clipping
+     the top. The flexible spacers collapse once the content overflows. */
+  justify-content: flex-start;
+  overflow-y: auto;
 }
+
+#select::before, #select::after,
+#results::before, #results::after { content: ''; flex: 1 0 8px; }
 
 .title {
   font-size: clamp(56px, 12vw, 120px);
@@ -402,6 +410,112 @@ html, body {
   padding: 2px 12px;
   border-radius: 99px;
 }
+
+/* ---------- Locked character cards ---------- */
+
+.card.locked { cursor: default; opacity: 0.9; background: #ece6da; }
+.card.locked:hover { transform: none; border-color: transparent; }
+.locked-face {
+  background: #d9d2c4;
+  border: 4px dashed #b3a890;
+  color: #8a7f68;
+}
+
+/* ---------- Grand Prix results ---------- */
+
+.gp-heading {
+  font-size: clamp(20px, 3.4vw, 32px);
+  font-weight: 800;
+  color: #fff;
+  text-shadow: 0 3px 8px rgba(0,0,0,0.45);
+}
+
+.gp-standings {
+  list-style: none;
+  background: #fff8e6;
+  border-radius: 16px;
+  padding: 10px 20px;
+  min-width: min(400px, 86vw);
+  box-shadow: 0 8px 20px rgba(0,0,0,0.25);
+}
+
+.gp-standings li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: clamp(15px, 2.4vw, 20px);
+  font-weight: 700;
+  color: #5a4a2c;
+  padding: 5px 4px;
+  border-bottom: 2px dashed #ece0c0;
+}
+
+.gp-standings li:last-child { border-bottom: none; }
+.gp-standings li.you { background: #ffe9a8; border-radius: 10px; }
+.gp-standings .gp-pos { width: 26px; text-align: center; color: #b3872a; }
+.gp-standings .gp-name { flex: 1; }
+.gp-standings .gp-pts { font-variant-numeric: tabular-nums; color: #b3872a; }
+
+.unlock-msg {
+  font-size: clamp(17px, 2.6vw, 22px);
+  font-weight: 800;
+  color: #ffd54a;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.5);
+  animation: bob 1.6s ease-in-out infinite;
+}
+
+/* ---------- Confetti ---------- */
+
+#confetti {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 11;
+}
+
+.confetti-piece {
+  position: absolute;
+  top: -24px;
+  width: 10px;
+  height: 16px;
+  border-radius: 2px;
+  opacity: 0.95;
+  animation-name: confettiFall;
+  animation-timing-function: linear;
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+}
+
+@keyframes confettiFall {
+  0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(112vh) rotate(720deg); opacity: 0.9; }
+}
+
+/* ---------- Boost speed lines ---------- */
+
+#speedLines {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  background: repeating-conic-gradient(
+    from 0deg at 50% 50%,
+    rgba(255,255,255,0.22) 0deg 0.6deg,
+    transparent 0.6deg 5deg
+  );
+  -webkit-mask: radial-gradient(circle at center, transparent 42%, #000 78%);
+  mask: radial-gradient(circle at center, transparent 42%, #000 78%);
+}
+
+#speedLines.on {
+  opacity: 0.9;
+  animation: speedSpin 1.2s linear infinite;
+}
+
+@keyframes speedSpin { to { transform: rotate(6deg); } }
 
 /* ---------- Mute button ---------- */
 

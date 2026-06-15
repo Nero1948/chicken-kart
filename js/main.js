@@ -3,7 +3,7 @@
 
 import * as THREE from 'three';
 import { buildTrack, track, inBarn, TRACKS } from './track.js';
-import { Kart, CHARACTERS, AI_ROSTER, resolveKartCollisions, resolveJumpStomps } from './kart.js';
+import { Kart, CHARACTERS, UNLOCKABLES, AI_ROSTER, resolveKartCollisions, resolveJumpStomps } from './kart.js';
 import { AIDriver } from './ai.js';
 import { ItemManager } from './items.js';
 import { Crossers } from './chickens.js';
@@ -12,6 +12,7 @@ import { Race } from './race.js';
 import * as hud from './hud.js';
 import { audio } from './audio.js';
 import * as records from './records.js';
+import * as unlocks from './unlocks.js';
 import { input, initInput, initTouch, updateInput, consumeFire } from './player.js';
 
 const ZERO_INPUT = { throttle: 0, steer: 0, brake: 0 };
@@ -26,6 +27,12 @@ const DIFFICULTIES = {
   hard:   { skills: [1.06, 1.03, 1.00, 0.97, 0.94], catchUp: 0.20, easeOff: 0.06, cap: 1.24 },
 };
 let difficulty = 'medium';
+
+// Grand Prix: a series of races over both tracks, scored by finishing position.
+const GP_RACE_COUNT = 3;
+const GP_POINTS = [9, 6, 4, 3, 2, 1]; // points for 1st..6th each race
+let mode = 'single'; // 'single' | 'gp'
+let gp = null;        // { raceIndex, tracks, field, points }
 
 let renderer, scene, camera, hemi, sun;
 let darkness = 0;     // 0 = daylight, 1 = inside the dark barn
@@ -46,6 +53,13 @@ let resultTimer = 0;
 let fanfarePlayed = false;
 let orbitAngle = 0;
 
+// Juice: camera shake + overtake detection
+let shakeT = 0;
+let shakeMag = 0;
+let prevBoosting = false;
+let prevSpin = false;
+let lastPlayerRank = 6;
+
 // Touch device? Used to show on-screen controls and lighten rendering load.
 const isTouch = matchMedia('(pointer: coarse)').matches
   || 'ontouchstart' in window || navigator.maxTouchPoints > 0;
@@ -63,13 +77,21 @@ const ui = {
   placings: document.getElementById('placings'),
   lapResult: document.getElementById('lapResult'),
   lapBoardList: document.getElementById('lapBoardList'),
+  gpHeading: document.getElementById('gpHeading'),
+  gpStandings: document.getElementById('gpStandings'),
+  unlockMsg: document.getElementById('unlockMsg'),
+  confetti: document.getElementById('confetti'),
+  speedLines: document.getElementById('speedLines'),
   playBtn: document.getElementById('playBtn'),
+  nextRace: document.getElementById('nextRace'),
   raceAgain: document.getElementById('raceAgain'),
   changeChicken: document.getElementById('changeChicken'),
   mainMenu: document.getElementById('mainMenu'),
   muteBtn: document.getElementById('muteBtn'),
+  modeBtns: document.querySelectorAll('#modeSel .mode-btn'),
   diffBtns: document.querySelectorAll('#difficulty .diff-btn'),
   trackBtns: document.querySelectorAll('#trackSel .track-btn'),
+  trackSel: document.getElementById('trackSel'),
   touch: document.getElementById('touch'),
   hint: document.querySelector('#menu .controls-hint'),
 };
@@ -119,7 +141,7 @@ function init() {
   hud.init();
   initInput();
   initTouch();
-  buildSelectCards();
+  renderSelectCards();
   wireUi();
   renderLapBoard();
 
@@ -133,6 +155,17 @@ function init() {
 }
 
 function wireUi() {
+  // Mode: single race vs a three-race Grand Prix. The track picker only
+  // applies to single races (a cup chooses its own tracks).
+  ui.modeBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      mode = btn.dataset.mode;
+      ui.modeBtns.forEach((b) => b.classList.toggle('active', b === btn));
+      ui.trackSel.classList.toggle('hidden', mode === 'gp');
+      btn.blur();
+    });
+  });
+
   ui.diffBtns.forEach((btn) => {
     btn.addEventListener('click', () => {
       difficulty = btn.dataset.diff;
@@ -155,20 +188,34 @@ function wireUi() {
   ui.playBtn.addEventListener('click', () => {
     audio.init();
     ui.playBtn.blur();
+    renderSelectCards(); // reflect any newly unlocked racers
     ui.menu.classList.add('hidden');
     ui.select.classList.remove('hidden');
     state = 'select';
   });
 
+  // Next race in a Grand Prix: keep the same field, move to the next track.
+  ui.nextRace.addEventListener('click', () => {
+    ui.nextRace.blur();
+    gp.raceIndex++;
+    cleanupRace();
+    ui.results.classList.add('hidden');
+    startRace(chosenKey);
+  });
+
+  // In single mode this re-races; after a cup it starts a fresh Grand Prix.
   ui.raceAgain.addEventListener('click', () => {
     ui.raceAgain.blur();
     cleanupRace();
+    ui.results.classList.add('hidden');
     startRace(chosenKey);
   });
 
   ui.changeChicken.addEventListener('click', () => {
     ui.changeChicken.blur();
     cleanupRace();
+    gp = null;
+    renderSelectCards();
     ui.results.classList.add('hidden');
     hud.hide();
     setTouchControls(false);
@@ -177,10 +224,11 @@ function wireUi() {
     audio.engineOff();
   });
 
-  // Back to the home menu, where the track and difficulty can be chosen again.
+  // Back to the home menu, where the mode, track and difficulty can be chosen.
   ui.mainMenu.addEventListener('click', () => {
     ui.mainMenu.blur();
     cleanupRace();
+    gp = null;
     ui.results.classList.add('hidden');
     hud.hide();
     setTouchControls(false);
@@ -217,58 +265,100 @@ function applyTheme() {
   }
 }
 
-function buildSelectCards() {
-  const hats = { laya: '👑', heyhey: '🕶️' };
-  for (const def of Object.values(CHARACTERS)) {
+const CARD_HATS = { laya: '👑', heyhey: '🕶️', sir: '🎩', disco: '🪩', captain: '🦸' };
+
+// Build the character cards. Base chickens are always available; the fancy
+// unlockables show as locked cards until they have been earned.
+function renderSelectCards() {
+  ui.cards.innerHTML = '';
+  const all = [...Object.values(CHARACTERS), ...Object.values(UNLOCKABLES)];
+  for (const def of all) {
+    const locked = def.locked && !unlocks.isUnlocked(def.key);
     const card = document.createElement('div');
-    card.className = 'card';
-    const kartHex = '#' + def.kart.toString(16).padStart(6, '0');
-    const statRows = Object.entries(def.bars).map(([label, v]) => `
-      <div class="stat">
-        <span class="stat-label">${label}</span>
-        <span class="stat-bar"><span class="stat-fill" style="width:${Math.round(v * 100)}%"></span></span>
-      </div>`).join('');
-    card.innerHTML = `
-      <div class="card-face" style="background:${kartHex}33; border: 4px solid ${kartHex}">
-        ${hats[def.key] ? `<span class="hat">${hats[def.key]}</span>` : ''}
-        🐔
-      </div>
-      <div class="card-name">${def.name}</div>
-      <div class="card-tag">${def.tagline}</div>
-      ${statRows}`;
-    card.addEventListener('click', () => {
-      audio.init();
-      chosenKey = def.key;
-      ui.select.classList.add('hidden');
-      startRace(def.key);
-    });
+    card.className = 'card' + (locked ? ' locked' : '');
+
+    if (locked) {
+      card.innerHTML = `
+        <div class="card-face locked-face">🔒</div>
+        <div class="card-name">???</div>
+        <div class="card-tag">Win a Grand Prix to unlock this racer</div>`;
+    } else {
+      const kartHex = '#' + def.kart.toString(16).padStart(6, '0');
+      const statRows = Object.entries(def.bars).map(([label, v]) => `
+        <div class="stat">
+          <span class="stat-label">${label}</span>
+          <span class="stat-bar"><span class="stat-fill" style="width:${Math.round(v * 100)}%"></span></span>
+        </div>`).join('');
+      card.innerHTML = `
+        <div class="card-face" style="background:${kartHex}33; border: 4px solid ${kartHex}">
+          ${CARD_HATS[def.key] ? `<span class="hat">${CARD_HATS[def.key]}</span>` : ''}
+          🐔
+        </div>
+        <div class="card-name">${def.name}</div>
+        <div class="card-tag">${def.tagline}</div>
+        ${statRows}`;
+      card.addEventListener('click', () => {
+        audio.init();
+        chosenKey = def.key;
+        ui.select.classList.add('hidden');
+        startRace(def.key);
+      });
+    }
     ui.cards.appendChild(card);
   }
 }
 
+// The six-racer field for a race: the player plus five rivals (the heroes they
+// did not pick, topped up with extras from the roster).
+function buildSingleField(key) {
+  const playerDef = CHARACTERS[key] || UNLOCKABLES[key];
+  const heroes = Object.values(CHARACTERS).filter((c) => c.key !== key);
+  const pool = shuffle([...heroes, ...AI_ROSTER]);
+  return [playerDef, ...pool.slice(0, 5)];
+}
+
+// Set up a fresh Grand Prix: three races over both tracks, one fixed field,
+// points carried across all races.
+function startGrandPrix(key) {
+  gp = {
+    raceIndex: 0,
+    tracks: Math.random() < 0.5 ? ['farm', 'city', 'farm'] : ['city', 'farm', 'city'],
+    field: buildSingleField(key),
+    points: {},
+  };
+  for (const d of gp.field) gp.points[d.key] = 0;
+}
+
 function startRace(key) {
-  // Make sure the chosen track is the one that is built before we grid up.
-  if (track.id !== selectedTrack) {
-    buildTrack(scene, selectedTrack);
+  // Work out which track to race and who is on the grid.
+  let trackId, field;
+  if (mode === 'gp') {
+    if (!gp) startGrandPrix(key);
+    trackId = gp.tracks[gp.raceIndex];
+    field = gp.field;
+  } else {
+    trackId = selectedTrack;
+    field = buildSingleField(key);
+  }
+
+  // Build the right track if it is not already the active one.
+  if (track.id !== trackId) {
+    buildTrack(scene, trackId);
     applyTheme();
     hud.refreshTrack();
   }
+  selectedTrack = trackId;
 
-  // Field: the player, the two heroes they did not pick, and three extras
-  const playerDef = CHARACTERS[key];
-  const otherHeroes = Object.values(CHARACTERS).filter((c) => c.key !== key);
-  const extras = shuffle([...AI_ROSTER]).slice(0, 3);
-  const aiDefs = shuffle([...otherHeroes, ...extras]);
   const diff = DIFFICULTIES[difficulty];
   const skills = shuffle([...diff.skills]);
 
-  player = new Kart(scene, playerDef, true);
+  player = new Kart(scene, field[0], true);
   karts = [player];
   drivers = [];
-  aiDefs.forEach((def, i) => {
+  field.slice(1).forEach((def, i) => {
     const kart = new Kart(scene, def, false);
     karts.push(kart);
-    drivers.push(new AIDriver(kart, skills[i], diff));
+    drivers.push(new AIDriver(kart, skills[i % skills.length], diff));
   });
 
   // Grid slots: front row first. The player starts second to last.
@@ -282,8 +372,10 @@ function startRace(key) {
 
   resultTimer = 0;
   fanfarePlayed = false;
+  lastPlayerRank = 5; // the player lines up 5th on the grid
   state = 'racing';
   ui.results.classList.add('hidden');
+  if (ui.confetti) ui.confetti.innerHTML = '';
   hud.show();
   setTouchControls(true);
 
@@ -307,6 +399,8 @@ function cleanupRace() {
   cow = null;
   hud.hideCountdown();
   setTouchControls(false);
+  if (ui.confetti) ui.confetti.innerHTML = '';
+  if (ui.speedLines) ui.speedLines.classList.remove('on');
 }
 
 // Fill the main-menu board with each track's stored fastest lap.
@@ -351,7 +445,105 @@ function showResults() {
     ui.lapResult.classList.add('hidden');
   }
 
+  const playerWon = sorted[0] && sorted[0].isPlayer;
+
+  if (mode === 'gp') {
+    // Award championship points for this race's finishing order.
+    sorted.forEach((k, i) => { gp.points[k.def.key] += (GP_POINTS[i] || 0); });
+    renderGpStandings();
+    ui.gpStandings.classList.remove('hidden');
+    if (gp.raceIndex >= GP_RACE_COUNT - 1) {
+      finishGrandPrix();
+    } else {
+      ui.gpHeading.textContent = `Race ${gp.raceIndex + 1} of ${GP_RACE_COUNT} complete`;
+      ui.gpHeading.classList.remove('hidden');
+      ui.unlockMsg.classList.add('hidden');
+      setResultButtons({ next: true });
+    }
+  } else {
+    ui.gpHeading.classList.add('hidden');
+    ui.gpStandings.classList.add('hidden');
+    ui.unlockMsg.classList.add('hidden');
+    setResultButtons({ next: false });
+    if (playerWon) spawnConfetti();
+  }
+
   ui.results.classList.remove('hidden');
+}
+
+// Show/hide the right buttons for the situation. Mid-cup we only offer "Next
+// race"; otherwise the single-race buttons (re-race / change / menu) apply.
+function setResultButtons({ next }) {
+  const midCup = mode === 'gp' && next;
+  ui.nextRace.classList.toggle('hidden', !next);
+  ui.raceAgain.classList.toggle('hidden', midCup);
+  ui.changeChicken.classList.toggle('hidden', midCup);
+  ui.raceAgain.textContent = mode === 'gp' ? 'New cup' : 'Race again';
+}
+
+function renderGpStandings() {
+  const rows = gp.field
+    .map((def) => ({ def, pts: gp.points[def.key] }))
+    .sort((a, b) => b.pts - a.pts);
+  ui.gpStandings.innerHTML = '';
+  rows.forEach((r, i) => {
+    const li = document.createElement('li');
+    if (r.def.key === chosenKey) li.className = 'you';
+    li.innerHTML = `
+      <span class="gp-pos">${i + 1}</span>
+      <span class="gp-name">${r.def.name}</span>
+      <span class="gp-pts">${r.pts} pts</span>`;
+    ui.gpStandings.appendChild(li);
+  });
+}
+
+// Final race of a cup: crown the champion, and if it's the player, unlock the
+// next fancy racer and throw confetti.
+function finishGrandPrix() {
+  const rows = gp.field
+    .map((def) => ({ def, pts: gp.points[def.key] }))
+    .sort((a, b) => b.pts - a.pts);
+  const champ = rows[0];
+  const won = champ.def.key === chosenKey;
+
+  ui.gpHeading.textContent = won ? '🏆 Grand Prix Champion!' : `${champ.def.name} wins the cup`;
+  ui.gpHeading.classList.remove('hidden');
+
+  if (won) {
+    const unlocked = unlocks.unlockNext();
+    ui.unlockMsg.textContent = unlocked
+      ? `🎉 New racer unlocked: ${unlocked.name}!`
+      : 'A true champion of the henhouse!';
+    ui.unlockMsg.classList.remove('hidden');
+    spawnConfetti();
+    audio.play('fanfare');
+  } else {
+    ui.unlockMsg.classList.add('hidden');
+  }
+
+  gp = null; // cup is over; "New cup" will start a fresh one
+  setResultButtons({ next: false });
+}
+
+// Lightweight DOM confetti for the results screen.
+function spawnConfetti() {
+  if (!ui.confetti) return;
+  ui.confetti.innerHTML = '';
+  const colours = ['#ffb300', '#ff5fb0', '#4ab8ff', '#7ed957', '#ff7a1a', '#ffffff'];
+  for (let i = 0; i < 70; i++) {
+    const piece = document.createElement('i');
+    piece.className = 'confetti-piece';
+    piece.style.left = Math.random() * 100 + '%';
+    piece.style.background = colours[i % colours.length];
+    piece.style.animationDelay = (Math.random() * 0.7) + 's';
+    piece.style.animationDuration = (1.6 + Math.random() * 1.6) + 's';
+    ui.confetti.appendChild(piece);
+  }
+}
+
+function addShake(mag) {
+  shakeMag = Math.max(shakeMag, mag);
+  shakeT = Math.max(shakeT, 0.3);
 }
 
 function animate() {
@@ -379,6 +571,20 @@ function animate() {
     updateChaseCamera(dt);
 
     audio.setEngine(Math.abs(player.speed) / player.def.maxSpeed);
+
+    // Juice: a kick of shake when a boost fires or you get hit, speed lines
+    // while boosting, and a proud bawk whenever you climb a place.
+    const boostingNow = player.boostT > 0;
+    if (boostingNow && !prevBoosting) addShake(0.5);
+    prevBoosting = boostingNow;
+    const spinningNow = player.spinT > 0;
+    if (spinningNow && !prevSpin) addShake(0.9);
+    prevSpin = spinningNow;
+    if (ui.speedLines) ui.speedLines.classList.toggle('on', boostingNow && race.state === 'racing');
+    if (race.state === 'racing' && !player.finished && player.rank < lastPlayerRank) {
+      audio.play('bawk');
+    }
+    lastPlayerRank = player.rank;
 
     if (player.finished && !fanfarePlayed) {
       fanfarePlayed = true;
@@ -433,6 +639,16 @@ function updateChaseCamera(dt) {
   if (Math.abs(camera.fov - targetFov) > 0.1) {
     camera.fov += (targetFov - camera.fov) * Math.min(1, 6 * dt);
     camera.updateProjectionMatrix();
+  }
+
+  // Camera shake (decays over ~0.3s), applied after the look so it jitters
+  if (shakeT > 0) {
+    shakeT -= dt;
+    const s = shakeMag * Math.max(0, shakeT / 0.3);
+    camera.position.x += (Math.random() - 0.5) * s * 3;
+    camera.position.y += (Math.random() - 0.5) * s * 3;
+    camera.position.z += (Math.random() - 0.5) * s * 3;
+    if (shakeT <= 0) shakeMag = 0;
   }
 }
 

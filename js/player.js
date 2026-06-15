@@ -3,15 +3,17 @@
 
 const keys = {};
 let firePressed = false;
-const touch = { left: false, right: false, gas: false, brake: false };
+const touch = { left: false, right: false, gas: false, brake: false, drift: false };
 
-export const input = { throttle: 0, steer: 0, brake: 0 };
+export const input = { throttle: 0, steer: 0, brake: 0, drift: 0 };
 
 export function initInput() {
   window.addEventListener('keydown', (e) => {
     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) {
       e.preventDefault();
     }
+    // Alt is the drift key; stop the browser from stealing focus to its menu
+    if (e.code === 'AltLeft' || e.code === 'AltRight') e.preventDefault();
     if (e.repeat) return;
     keys[e.code] = true;
     if (e.code === 'Space') firePressed = true;
@@ -52,6 +54,7 @@ export function updateInput() {
   // Positive steer turns left, matching the physics convention
   input.steer = ((keys.ArrowLeft || keys.KeyA || touch.left) ? 1 : 0)
     - ((keys.ArrowRight || keys.KeyD || touch.right) ? 1 : 0);
+  input.drift = (keys.AltLeft || keys.AltRight || touch.drift) ? 1 : 0;
 }
 
 // Returns true once per space bar press

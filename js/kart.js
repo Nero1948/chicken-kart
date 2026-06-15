@@ -30,6 +30,32 @@ export const CHARACTERS = {
   },
 };
 
+// Fancy racers earned by winning a Grand Prix. They start locked and are
+// revealed one at a time on the character select screen.
+export const UNLOCKABLES = {
+  sir: {
+    key: 'sir', name: 'Sir Cluckington', locked: true,
+    tagline: 'A dapper gentleman of remarkable speed.',
+    body: 0xfff0d8, kart: 0x2b2b33, maxSpeed: 31, accel: 25, steer: 2.45,
+    tophat: true, bowtie: true,
+    bars: { Speed: 0.8, Acceleration: 0.75, Handling: 0.75 },
+  },
+  disco: {
+    key: 'disco', name: 'Disco Diva', locked: true,
+    tagline: 'Sparkle, shimmy and shine to the finish!',
+    body: 0xf2c200, kart: 0xff4fae, maxSpeed: 30, accel: 28, steer: 2.7,
+    crown: true, sunglasses: true,
+    bars: { Speed: 0.7, Acceleration: 0.9, Handling: 0.9 },
+  },
+  captain: {
+    key: 'captain', name: 'Captain Cluck', locked: true,
+    tagline: 'Super-powered hero of the henhouse!',
+    body: 0xff5a3c, kart: 0x2a4cd0, maxSpeed: 33, accel: 25, steer: 2.5,
+    cape: true, capeColor: 0xd81e3a, mask: true, maskColor: 0x12246e,
+    bars: { Speed: 0.9, Acceleration: 0.75, Handling: 0.8 },
+  },
+};
+
 // Extra AI-only racers to fill the grid
 export const AI_ROSTER = [
   { key: 'nugget', name: 'Nugget', body: 0xc97b3a, kart: 0xf2a33c, maxSpeed: 30, accel: 24, steer: 2.4 },
@@ -42,6 +68,14 @@ export const AI_ROSTER = [
 const SPIN_DURATION = 1.4;
 const BOOST_DURATION = 2.4;
 const BOOST_MULT = 1.45;
+
+// Drift / mini-turbo tuning. Hold the drift button while turning at speed to
+// slide; sparks build through two charge stages, and releasing pays out a
+// short boost whose length depends on the stage reached.
+const DRIFT_MIN_SPEED = 11;
+const DRIFT_STAGE1 = 0.55; // seconds of drift for a small (blue) boost
+const DRIFT_STAGE2 = 1.30; // seconds for a big (orange) boost
+const DRIFT_TURN = 1.5;    // how much harder the kart turns while drifting
 
 export class Kart {
   constructor(scene, def, isPlayer) {
@@ -80,10 +114,38 @@ export class Kart {
     this.wrongAccum = 0;
     this.wrongWay = false;
 
+    // Drifting (player only, but the fields live on every kart)
+    this.drifting = false;
+    this.driftDir = 0;     // -1 / +1 locked direction of the current slide
+    this.driftCharge = 0;  // seconds spent in the current drift
+    this.driftStage = 0;   // 0 none, 1 small boost ready, 2 big boost ready
+    this.driftHopT = 0;    // little hop animation when a drift begins
+    this.driftYaw = 0;     // visual slide angle of the body
+    this.onGrass = false;
+    this.offRoad = false;  // on grass or in the mud (used for dust puffs)
+
     this.aiFactor = 1;    // rubber band multiplier set by AI driver (1 for player)
     this.aiInput = { throttle: 0, steer: 0, brake: 0 };
     this.wallCooldown = 0;
     this.time = Math.random() * 100; // desync idle animations
+  }
+
+  // End a drift and pay out the mini-turbo earned for its charge stage.
+  endDrift() {
+    const stage = this.driftStage;
+    this.cancelDrift();
+    if (stage >= 1) {
+      this.boostT = Math.max(this.boostT, stage >= 2 ? 1.0 : 0.55);
+      if (this.isPlayer) audio.play('driftboost');
+    }
+  }
+
+  // Stop drifting without any reward (used when spun out).
+  cancelDrift() {
+    this.drifting = false;
+    this.driftCharge = 0;
+    this.driftStage = 0;
+    this.driftDir = 0;
   }
 
   forward(out) {
@@ -122,11 +184,14 @@ export class Kart {
     let surfaceMult = 1;
     if (onGrass) surfaceMult = 0.5;
     else if (inTheMud) surfaceMult = 0.45;
+    this.onGrass = onGrass;
+    this.offRoad = onGrass || inTheMud;
 
     if (this.spinT > 0) {
       // Spinning out: no control, bleed speed
       this.spinT -= dt;
       this.speed *= Math.max(0, 1 - 2.2 * dt);
+      if (this.drifting) this.cancelDrift();
     } else {
       const boosting = this.boostT > 0;
       const maxS = this.def.maxSpeed * surfaceMult * (boosting ? BOOST_MULT : 1) * this.aiFactor;
@@ -141,12 +206,42 @@ export class Kart {
       if (this.speed > maxS) this.speed += (maxS - this.speed) * 4 * dt;
       this.speed = Math.max(-8, this.speed);
 
+      // Drift: hold the drift button while turning at speed to slide. The
+      // direction is locked in when the drift starts; releasing pays a boost.
+      const canDrift = !this.airborne && this.speed > DRIFT_MIN_SPEED;
+      if (input.drift && canDrift) {
+        if (!this.drifting && Math.abs(input.steer) > 0.15) {
+          this.drifting = true;
+          this.driftDir = Math.sign(input.steer);
+          this.driftCharge = 0;
+          this.driftHopT = 0.28;
+          if (this.isPlayer) audio.play('drift');
+        }
+      } else if (this.drifting) {
+        this.endDrift();
+      }
+
+      let steerInput = input.steer;
+      if (this.drifting) {
+        this.driftCharge += dt;
+        this.driftStage = this.driftCharge >= DRIFT_STAGE2 ? 2
+          : this.driftCharge >= DRIFT_STAGE1 ? 1 : 0;
+        // Bias toward the locked direction; the player can still tighten or
+        // open the line a little with the steering keys.
+        steerInput = Math.max(-1, Math.min(1, this.driftDir * 0.85 + input.steer * 0.35));
+      }
+
       // Steering: weak at a standstill, slightly heavier at top speed
       const grip = Math.min(1, Math.abs(this.speed) / 6) * (1 - 0.25 * Math.min(1, Math.abs(this.speed) / this.def.maxSpeed));
       const dir = this.speed < 0 ? -1 : 1;
-      this.heading += input.steer * this.def.steer * grip * dir * dt;
-      this.steerVisual += (input.steer - this.steerVisual) * Math.min(1, 10 * dt);
+      const turnMult = this.drifting ? DRIFT_TURN : 1;
+      this.heading += steerInput * this.def.steer * grip * turnMult * dir * dt;
+      this.steerVisual += (steerInput - this.steerVisual) * Math.min(1, 10 * dt);
     }
+
+    // Ease the visual body slide toward the drift direction (or back to centre)
+    const yawTarget = this.drifting ? -this.driftDir * 0.5 : 0;
+    this.driftYaw += (yawTarget - this.driftYaw) * Math.min(1, 8 * dt);
 
     // Move
     this.pos.x += Math.sin(this.heading) * this.speed * dt;
@@ -253,7 +348,13 @@ export class Kart {
     if (this.spinT > 0) {
       spinOffset = (1 - this.spinT / SPIN_DURATION) * Math.PI * 4;
     }
-    m.group.rotation.y = this.heading + spinOffset;
+    m.group.rotation.y = this.heading + spinOffset + this.driftYaw;
+
+    // A quick hop as a drift kicks off
+    if (this.driftHopT > 0) {
+      this.driftHopT -= dt;
+      m.group.position.y += Math.sin((1 - this.driftHopT / 0.28) * Math.PI) * 0.35;
+    }
     m.group.rotation.z = -this.steerVisual * 0.07 * Math.min(1, Math.abs(this.speed) / 15);
     m.group.rotation.x = this.airborne ? Math.max(-0.45, Math.min(0.45, -this.vy * 0.03)) : 0;
 
@@ -446,6 +547,50 @@ function buildChickenKart(def) {
     const shades = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.13, 0.1), darkMat);
     shades.position.set(0, 0.88, 0.6);
     chicken.add(shades);
+  }
+
+  if (def.tophat) {
+    const black = lambert(0x1a1a1a);
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.36, 0.06, 16), black);
+    brim.position.set(0, 1.16, 0.28);
+    chicken.add(brim);
+    const top = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.46, 16), black);
+    top.position.set(0, 1.42, 0.28);
+    chicken.add(top);
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.255, 0.255, 0.1, 16), redMat);
+    band.position.set(0, 1.26, 0.28);
+    chicken.add(band);
+  }
+
+  if (def.bowtie) {
+    const tieMat = lambert(0xc0392b);
+    for (const s of [-1, 1]) {
+      const wing = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.26, 4), tieMat);
+      wing.rotation.z = s * Math.PI / 2;
+      wing.position.set(s * 0.13, 0.42, 0.56);
+      chicken.add(wing);
+    }
+    const knot = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.13, 0.12), tieMat);
+    knot.position.set(0, 0.42, 0.58);
+    chicken.add(knot);
+  }
+
+  if (def.cape) {
+    const capeMat = new THREE.MeshLambertMaterial({
+      color: def.capeColor ?? 0xd81e3a, side: THREE.DoubleSide,
+    });
+    const cape = new THREE.Mesh(new THREE.PlaneGeometry(0.95, 1.15), capeMat);
+    cape.position.set(0, 0.18, -0.6);
+    cape.rotation.x = 0.22;
+    cape.castShadow = true;
+    chicken.add(cape);
+  }
+
+  if (def.mask) {
+    const maskMat = lambert(def.maskColor ?? 0x2a4cd0);
+    const band = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.18, 0.1), maskMat);
+    band.position.set(0, 0.9, 0.58);
+    chicken.add(band);
   }
 
   const chickenBaseY = 1.15;

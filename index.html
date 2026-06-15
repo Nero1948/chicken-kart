@@ -26,6 +26,13 @@
   <div id="menu" class="screen">
     <h1 class="title">CHICKEN<br>KART</h1>
     <p class="subtitle">Bawk to the floor!</p>
+    <div id="modeSel" class="diff-group" role="group" aria-label="Mode">
+      <span class="diff-label">Mode</span>
+      <div class="diff-btns">
+        <button class="diff-btn mode-btn active" data-mode="single">Single Race</button>
+        <button class="diff-btn mode-btn" data-mode="gp">Grand Prix</button>
+      </div>
+    </div>
     <div id="trackSel" class="diff-group" role="group" aria-label="Track">
       <span class="diff-label">Track</span>
       <div class="diff-btns track-btns">
@@ -48,6 +55,7 @@
     </div>
     <div class="controls-hint">
       <span><b>Arrows / WASD</b> drive</span>
+      <span><b>Alt</b> drift</span>
       <span><b>Space</b> use item</span>
     </div>
   </div>
@@ -73,16 +81,24 @@
 
   <div id="countdown" class="hidden"></div>
 
+  <!-- Speed-line overlay, shown while boosting -->
+  <div id="speedLines" aria-hidden="true"></div>
+
   <!-- Results -->
   <div id="results" class="screen hidden">
     <h2 class="screen-heading">Race results</h2>
+    <p id="gpHeading" class="gp-heading hidden"></p>
     <ol id="placings"></ol>
+    <ul id="gpStandings" class="gp-standings hidden"></ul>
     <p id="lapResult" class="lap-result hidden"></p>
+    <p id="unlockMsg" class="unlock-msg hidden"></p>
     <div class="btn-row">
+      <button id="nextRace" class="big-btn hidden">Next race</button>
       <button id="raceAgain" class="big-btn">Race again</button>
       <button id="changeChicken" class="big-btn alt">Change chicken</button>
       <button id="mainMenu" class="big-btn alt">Main menu</button>
     </div>
+    <div id="confetti" aria-hidden="true"></div>
   </div>
 
   <!-- On-screen controls for touch devices (shown only while racing) -->
@@ -94,6 +110,7 @@
     <div class="touch-drive">
       <div class="drive-col">
         <button class="tbtn small" data-act="item" aria-label="Use item">🎁</button>
+        <button class="tbtn small" data-act="drift" aria-label="Drift">💨</button>
         <button class="tbtn small" data-act="brake" aria-label="Brake">▼</button>
       </div>
       <button class="tbtn gas" data-act="gas" aria-label="Accelerate">▲</button>
