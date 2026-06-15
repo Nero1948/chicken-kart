@@ -34,6 +34,10 @@ const GP_POINTS = [9, 6, 4, 3, 2, 1]; // points for 1st..6th each race
 let mode = 'single'; // 'single' | 'gp'
 let gp = null;        // { raceIndex, tracks, field, points }
 
+// Emoji shown on each racer's select card (declared up here so it is ready
+// before init() builds the cards on first load).
+const CARD_HATS = { laya: '👑', heyhey: '🕶️', sir: '🎩', disco: '🪩', captain: '🦸' };
+
 let renderer, scene, camera, hemi, sun;
 let darkness = 0;     // 0 = daylight, 1 = inside the dark barn
 let cluckTimer = 0;
@@ -264,8 +268,6 @@ function applyTheme() {
     if (th.fog) { scene.fog.near = th.fog[0]; scene.fog.far = th.fog[1]; }
   }
 }
-
-const CARD_HATS = { laya: '👑', heyhey: '🕶️', sir: '🎩', disco: '🪩', captain: '🦸' };
 
 // Build the character cards. Base chickens are always available; the fancy
 // unlockables show as locked cards until they have been earned.
