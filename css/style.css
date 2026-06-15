@@ -129,6 +129,9 @@ html, body {
 
 .diff-btns {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: min(92vw, 560px);
   gap: 8px;
   background: rgba(0,0,0,0.3);
   padding: 6px;

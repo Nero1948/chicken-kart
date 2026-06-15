@@ -30,13 +30,15 @@ export function getGpWins() {
   return load().gpWins || 0;
 }
 
-// Record a Grand Prix win and unlock the next still-locked racer.
-// Returns the newly unlocked definition, or null if everything is already won.
-export function unlockNext() {
+// Unlock the next still-locked racer of a given tier ('gp' or 'extreme').
+// A standard cup win counts toward the gpWins tally; Extreme sweeps do not.
+// Returns the newly unlocked definition, or null if that tier is fully unlocked.
+export function unlockNext(tier = 'gp') {
   const data = load();
-  data.gpWins = (data.gpWins || 0) + 1;
+  if (tier === 'gp') data.gpWins = (data.gpWins || 0) + 1;
   let newly = null;
   for (const def of Object.values(UNLOCKABLES)) {
+    if ((def.tier || 'gp') !== tier) continue;
     if (!data.unlocked.includes(def.key)) {
       data.unlocked.push(def.key);
       newly = def;

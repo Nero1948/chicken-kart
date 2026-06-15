@@ -22,9 +22,12 @@ const ZERO_INPUT = { throttle: 0, steer: 0, brake: 0 };
 // a trailing AI speeds up and a leading AI backs off. `cap` is the highest
 // speed multiplier an AI may ever reach, so Hard rivals can out-drag the player.
 const DIFFICULTIES = {
-  easy:   { skills: [0.84, 0.81, 0.78, 0.75, 0.72], catchUp: 0.08, easeOff: 0.22, cap: 0.96 },
-  medium: { skills: [0.99, 0.96, 0.93, 0.90, 0.87], catchUp: 0.16, easeOff: 0.10, cap: 1.12 },
-  hard:   { skills: [1.06, 1.03, 1.00, 0.97, 0.94], catchUp: 0.20, easeOff: 0.06, cap: 1.24 },
+  easy:    { skills: [0.84, 0.81, 0.78, 0.75, 0.72], catchUp: 0.08, easeOff: 0.22, cap: 0.96 },
+  medium:  { skills: [0.99, 0.96, 0.93, 0.90, 0.87], catchUp: 0.16, easeOff: 0.10, cap: 1.12 },
+  hard:    { skills: [1.06, 1.03, 1.00, 0.97, 0.94], catchUp: 0.20, easeOff: 0.06, cap: 1.24 },
+  // Extreme: rivals are flat-out fast, claw back hard when behind and barely
+  // ease off when ahead. Winning every race here is a real test.
+  extreme: { skills: [1.16, 1.12, 1.08, 1.04, 1.00], catchUp: 0.24, easeOff: 0.03, cap: 1.38 },
 };
 let difficulty = 'medium';
 
@@ -36,7 +39,7 @@ let gp = null;        // { raceIndex, tracks, field, points }
 
 // Emoji shown on each racer's select card (declared up here so it is ready
 // before init() builds the cards on first load).
-const CARD_HATS = { laya: '👑', heyhey: '🕶️', sir: '🎩', disco: '🪩', captain: '🦸' };
+const CARD_HATS = { laya: '👑', heyhey: '🕶️', sir: '🎩', disco: '🪩', captain: '🦸', lava: '🌋', summit: '❄️' };
 
 let renderer, scene, camera, hemi, sun;
 let darkness = 0;     // 0 = daylight, 1 = inside the dark barn
@@ -125,7 +128,8 @@ function init() {
   scene.background = new THREE.Color(0x87ceeb);
   scene.fog = new THREE.Fog(0x87ceeb, 200, 460);
 
-  camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 600);
+  // Far plane is generous so Tongariro Park's distant volcanoes stay in view.
+  camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 1200);
 
   hemi = new THREE.HemisphereLight(0xffffff, 0x88aa55, 0.9);
   scene.add(hemi);
@@ -280,10 +284,13 @@ function renderSelectCards() {
     card.className = 'card' + (locked ? ' locked' : '');
 
     if (locked) {
+      const hint = def.tier === 'extreme'
+        ? 'Win every race of a Grand Prix on Extreme to unlock'
+        : 'Win a Grand Prix to unlock this racer';
       card.innerHTML = `
         <div class="card-face locked-face">🔒</div>
         <div class="card-name">???</div>
-        <div class="card-tag">Win a Grand Prix to unlock this racer</div>`;
+        <div class="card-tag">${hint}</div>`;
     } else {
       const kartHex = '#' + def.kart.toString(16).padStart(6, '0');
       const statRows = Object.entries(def.bars).map(([label, v]) => `
@@ -319,14 +326,17 @@ function buildSingleField(key) {
   return [playerDef, ...pool.slice(0, 5)];
 }
 
-// Set up a fresh Grand Prix: three races over both tracks, one fixed field,
-// points carried across all races.
+// Set up a fresh Grand Prix: one race on each of the three tracks in a random
+// order, one fixed field, points carried across all races. `wonAll` stays true
+// only while the player has won every race so far (the Extreme unlock test).
 function startGrandPrix(key) {
   gp = {
     raceIndex: 0,
-    tracks: Math.random() < 0.5 ? ['farm', 'city', 'farm'] : ['city', 'farm', 'city'],
+    tracks: shuffle(['farm', 'city', 'park']),
     field: buildSingleField(key),
     points: {},
+    wonAll: true,
+    diff: difficulty, // the difficulty the cup was started on
   };
   for (const d of gp.field) gp.points[d.key] = 0;
 }
@@ -452,6 +462,8 @@ function showResults() {
   if (mode === 'gp') {
     // Award championship points for this race's finishing order.
     sorted.forEach((k, i) => { gp.points[k.def.key] += (GP_POINTS[i] || 0); });
+    // Track the clean sweep: the player must win every race to keep this true.
+    gp.wonAll = gp.wonAll && playerWon;
     renderGpStandings();
     ui.gpStandings.classList.remove('hidden');
     if (gp.raceIndex >= GP_RACE_COUNT - 1) {
@@ -507,15 +519,29 @@ function finishGrandPrix() {
     .sort((a, b) => b.pts - a.pts);
   const champ = rows[0];
   const won = champ.def.key === chosenKey;
+  // A clean sweep of an Extreme cup (winning all three races) is the only way
+  // to earn the extreme-tier legends.
+  const extremeSweep = gp.diff === 'extreme' && gp.wonAll && won;
 
   ui.gpHeading.textContent = won ? '🏆 Grand Prix Champion!' : `${champ.def.name} wins the cup`;
   ui.gpHeading.classList.remove('hidden');
 
   if (won) {
-    const unlocked = unlocks.unlockNext();
-    ui.unlockMsg.textContent = unlocked
-      ? `🎉 New racer unlocked: ${unlocked.name}!`
-      : 'A true champion of the henhouse!';
+    // Standard cup win reveals the next gp-tier racer; an Extreme sweep also
+    // reveals the next extreme-tier legend.
+    const unlocked = unlocks.unlockNext('gp');
+    const extreme = extremeSweep ? unlocks.unlockNext('extreme') : null;
+    let msg;
+    if (extreme) {
+      msg = `🌋 EXTREME SWEEP! Legend unlocked: ${extreme.name}!`;
+    } else if (gp.diff === 'extreme' && gp.wonAll) {
+      msg = '🌋 Extreme legends all unlocked. Unstoppable!';
+    } else if (unlocked) {
+      msg = `🎉 New racer unlocked: ${unlocked.name}!`;
+    } else {
+      msg = 'A true champion of the henhouse!';
+    }
+    ui.unlockMsg.textContent = msg;
     ui.unlockMsg.classList.remove('hidden');
     spawnConfetti();
     audio.play('fanfare');

@@ -31,28 +31,46 @@ export const CHARACTERS = {
 };
 
 // Fancy racers earned by winning a Grand Prix. They start locked and are
-// revealed one at a time on the character select screen.
+// revealed one at a time on the character select screen. `tier` decides how
+// each is earned: 'gp' racers come from any cup win, 'extreme' racers demand a
+// clean sweep (winning every race) of a Grand Prix on Extreme difficulty.
 export const UNLOCKABLES = {
   sir: {
-    key: 'sir', name: 'Sir Cluckington', locked: true,
+    key: 'sir', name: 'Sir Cluckington', locked: true, tier: 'gp',
     tagline: 'A dapper gentleman of remarkable speed.',
     body: 0xfff0d8, kart: 0x2b2b33, maxSpeed: 31, accel: 25, steer: 2.45,
     tophat: true, bowtie: true,
     bars: { Speed: 0.8, Acceleration: 0.75, Handling: 0.75 },
   },
   disco: {
-    key: 'disco', name: 'Disco Diva', locked: true,
+    key: 'disco', name: 'Disco Diva', locked: true, tier: 'gp',
     tagline: 'Sparkle, shimmy and shine to the finish!',
     body: 0xf2c200, kart: 0xff4fae, maxSpeed: 30, accel: 28, steer: 2.7,
     crown: true, sunglasses: true,
     bars: { Speed: 0.7, Acceleration: 0.9, Handling: 0.9 },
   },
   captain: {
-    key: 'captain', name: 'Captain Cluck', locked: true,
+    key: 'captain', name: 'Captain Cluck', locked: true, tier: 'gp',
     tagline: 'Super-powered hero of the henhouse!',
     body: 0xff5a3c, kart: 0x2a4cd0, maxSpeed: 33, accel: 25, steer: 2.5,
     cape: true, capeColor: 0xd81e3a, mask: true, maskColor: 0x12246e,
     bars: { Speed: 0.9, Acceleration: 0.75, Handling: 0.8 },
+  },
+  // Extreme-tier legends: only a clean sweep of an Extreme Grand Prix reveals
+  // them. Themed to the volcanoes of Tongariro Park: fire and ice.
+  lava: {
+    key: 'lava', name: 'Lava Lou', locked: true, tier: 'extreme',
+    tagline: 'Forged in the fire of Ngauruhoe. Pure molten speed.',
+    body: 0xff5a1e, kart: 0x201510, maxSpeed: 34, accel: 27, steer: 2.55,
+    sunglasses: true, cape: true, capeColor: 0xff7a1a,
+    bars: { Speed: 0.98, Acceleration: 0.85, Handling: 0.8 },
+  },
+  summit: {
+    key: 'summit', name: 'Summit', locked: true, tier: 'extreme',
+    tagline: 'Queen of the snowy peaks. Untouchable on the line.',
+    body: 0xeaf6ff, kart: 0x2e6fb0, maxSpeed: 33, accel: 30, steer: 2.85,
+    crown: true, cape: true, capeColor: 0x9fd8ff,
+    bars: { Speed: 0.9, Acceleration: 0.95, Handling: 0.95 },
   },
 };
 

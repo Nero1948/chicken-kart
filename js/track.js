@@ -70,6 +70,32 @@ const CITY_PTS = [
   [-34, -101],     // 20 sweep back to the start line
 ];
 
+// Tongariro National Park: an off-road volcanic loop. Long flowing straights
+// carry jump ramps, the infield holds boulders and the Emerald Lakes, and the
+// three great volcanoes (Ngauruhoe, Ruapehu, Tongariro) ring the horizon.
+const PARK_PTS = [
+  [0, -86],     // 0  start / finish (bottom), heading east
+  [46, -84],    // 1  start straight (flat for the grid)
+  [84, -70],    // 2
+  [108, -42],   // 3
+  [114, -6],    // 4  east straight (jump ramp)
+  [110, 30],    // 5
+  [134, 56],    // 6  outer bulge
+  [120, 90],    // 7
+  [80, 110],    // 8
+  [34, 114],    // 9  top straight (jump ramp)
+  [-14, 110],   // 10
+  [-60, 112],   // 11
+  [-104, 96],   // 12
+  [-136, 68],   // 13
+  [-146, 32],   // 14 west straight (jump ramp)
+  [-150, -6],   // 15
+  [-150, -42],  // 16
+  [-130, -70],  // 17
+  [-92, -86],   // 18
+  [-46, -90],   // 19 sweep back to the start line
+];
+
 /* ------------------------- the shared track object ------------------------- */
 
 export const track = {
@@ -90,6 +116,7 @@ export const track = {
   barnZone: null,  // farm: { startIdx, endIdx } sample range covered by the barn
   tunnel: null,    // farm: { startIdx, endIdx, depth } the underground tunnel dip
   ramp: null,      // farm: { startIdx, lipIdx, height } the jump ramp
+  jumps: [],       // park: [{ startIdx, lipIdx, height }] several off-road jumps
   bridge: null,    // city: { startIdx, endIdx, deckHeight } the Harbour Bridge arch
   roadworks: null, // city: { startIdx, endIdx, coneSide, openOffset } lane closure
   specialBoxes: [], // [{ pos }] where the sparkly pink llama boxes sit
@@ -107,6 +134,11 @@ export const TRACKS = {
     id: 'city', name: 'Chickens in the City', roadHalf: 7, limit: 12, pts: CITY_PTS,
     theme: { sky: 0x9fc4dd, fog: [230, 540] },
     build: buildCity,
+  },
+  park: {
+    id: 'park', name: 'Tongariro Park', roadHalf: 7.5, limit: 13, pts: PARK_PTS,
+    theme: { sky: 0x8fc1e3, fog: [340, 980] },
+    build: buildPark,
   },
 };
 
@@ -162,6 +194,7 @@ function resetTrack() {
   track.barnZone = null;
   track.tunnel = null;
   track.ramp = null;
+  track.jumps = [];
   track.bridge = null;
   track.roadworks = null;
   track.specialBoxes = [];
@@ -307,6 +340,14 @@ export function surfaceY(idx, lateral) {
     y += rp.height * zonePos(idx, rp.startIdx, rp.lipIdx);
   }
 
+  // Off-road jump ramps (park): each rises smoothly to its lip, then the road
+  // falls away so a kart at speed launches into the air.
+  for (const jp of track.jumps) {
+    if (idxInRange(idx, jp.startIdx, jp.lipIdx)) {
+      y += jp.height * zonePos(idx, jp.startIdx, jp.lipIdx);
+    }
+  }
+
   const br = track.bridge;
   if (br && idxInRange(idx, br.startIdx, br.endIdx)) {
     y += br.deckHeight * bridgeProfile(zonePos(idx, br.startIdx, br.endIdx));
@@ -327,7 +368,11 @@ function bridgeProfile(t) {
 // True for the couple of samples at the ramp lip, where a kart launches
 export function atRampLip(idx) {
   const rp = track.ramp;
-  return rp ? idxInRange(idx, rp.lipIdx, rp.lipIdx + 1) : false;
+  if (rp && idxInRange(idx, rp.lipIdx, rp.lipIdx + 1)) return true;
+  for (const jp of track.jumps) {
+    if (idxInRange(idx, jp.lipIdx, jp.lipIdx + 1)) return true;
+  }
+  return false;
 }
 
 /* ------------------------- geometry helpers ------------------------- */
@@ -1378,4 +1423,275 @@ function buildStreetlights(group) {
     light.rotation.y = Math.atan2(s.normal.x * side, s.normal.z * side);
     group.add(light);
   }
+}
+
+/* ===================================================================== */
+/* =====================  TONGARIRO NATIONAL PARK  ==================== */
+/* ===================================================================== */
+
+// Where the three great volcanoes sit on the horizon. Kept inside the camera's
+// far plane so they read as huge but ever-present landmarks. The order matters
+// only for flavour: Ngauruhoe is the perfect smoking cone, Ruapehu the broad
+// snow-capped massif, Tongariro the lower rugged ridge.
+const VOLCANOES = [
+  { x: 36, z: 300, baseR: 66, height: 152, color: 0x4a4038, snowFrac: 0.28, smoke: true },   // Ngauruhoe
+  { x: -150, z: 296, baseR: 108, height: 176, color: 0x575049, snowFrac: 0.5, twin: true },   // Ruapehu
+  { x: 196, z: 270, baseR: 86, height: 112, color: 0x52473d, snowFrac: 0.2 },                 // Tongariro
+];
+
+function buildPark(group) {
+  computeParkJumps();
+  buildParkGround(group);
+  buildRoad(group, { color: 0x8a6038, shadeAmt: 0.22, shadeBase: 0.86, followY: true, seed: 23 });
+  buildStartLine(group);
+  buildRoadside(group, { offset: 13, postW: 0.28, postH: 1.0, rails: [0.5], color: 0x6e4a28, skipElevated: true });
+  buildParkJumps(group);
+  buildVolcanoes(group);
+  buildEmeraldLakes(group);
+  buildBoulders(group);
+  buildTussock(group);
+  buildBanner(group, 'TONGARIRO PARK', '#7a4a1f');
+  buildClouds(group, 6);
+  // Item box rows on the flatter stretches, kept clear of the jump ramps.
+  setBoxSpots([0.08, 0.34, 0.60, 0.86]);
+  track.specialBoxes = [
+    { pos: track.samples[Math.floor(0.30 * N)].pos.clone() },
+    { pos: track.samples[Math.floor(0.82 * N)].pos.clone() },
+  ];
+}
+
+// Three jump ramps spaced around the loop, each on one of the long straights.
+function computeParkJumps() {
+  const defs = [
+    { lip: 0.21, height: 2.7 },
+    { lip: 0.46, height: 2.4 },
+    { lip: 0.71, height: 2.9 },
+  ];
+  track.jumps = defs.map((d) => {
+    const lipIdx = Math.floor(d.lip * N);
+    return { startIdx: (lipIdx - 6 + N) % N, lipIdx, height: d.height };
+  });
+}
+
+// Volcanic ground: a tussocky alpine-desert base with darker scorched lava
+// fields scattered around the infield and surrounds.
+function buildParkGround(group) {
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(1400, 1400), lambert(0x9c8a52));
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.y = -0.02;
+  ground.receiveShadow = true;
+  group.add(ground);
+
+  // Dark old-lava patches for texture, well clear of the racing line.
+  const rng = mulberry32(71);
+  const lava = lambert(0x4f4034);
+  let placed = 0, tries = 0;
+  while (placed < 14 && tries < 300) {
+    tries++;
+    const x = (rng() - 0.5) * 360;
+    const z = (rng() - 0.5) * 320;
+    const p = new THREE.Vector3(x, 0, z);
+    let minD = Infinity;
+    for (let i = 0; i < N; i += 5) minD = Math.min(minD, p.distanceTo(track.samples[i].pos));
+    if (minD < 16) continue;
+    const patch = new THREE.Mesh(new THREE.CircleGeometry(6 + rng() * 10, 16), lava);
+    patch.rotation.x = -Math.PI / 2;
+    patch.rotation.z = rng() * Math.PI;
+    patch.position.set(x, 0.0, z);
+    group.add(patch);
+    placed++;
+  }
+}
+
+// Build the dirt jump ramps: a bright caution lip plank at each take-off, with
+// chevron stripes, sitting on top of the road that already rises to meet it.
+function buildParkJumps(parent) {
+  const g = new THREE.Group();
+  for (const jp of track.jumps) {
+    const lipS = track.samples[jp.lipIdx];
+    const lp = latPoint(lipS, 0);
+    lp.y = surfaceY(jp.lipIdx, 0);
+
+    const lip = new THREE.Mesh(
+      new THREE.BoxGeometry(track.roadHalf * 2, 0.45, 1.0),
+      makeChevronMaterial()
+    );
+    lip.position.copy(lp);
+    lip.position.y += 0.18;
+    lip.lookAt(lp.x + lipS.tan.x, lp.y + 0.18, lp.z + lipS.tan.z);
+    lip.castShadow = true;
+    g.add(lip);
+
+    // Dirt support berms either side of the take-off for a rugged ramp look.
+    const berm = lambert(0x6e4a28);
+    for (const side of [-1, 1]) {
+      const bp = latPoint(lipS, side * (track.roadHalf + 0.8));
+      bp.y = surfaceY(jp.lipIdx, 0) * 0.5;
+      const mound = new THREE.Mesh(new THREE.ConeGeometry(1.8, jp.height + 1.2, 7), berm);
+      mound.position.set(bp.x, bp.y, bp.z);
+      mound.castShadow = true;
+      g.add(mound);
+    }
+  }
+  parent.add(g);
+}
+
+// A reusable yellow/black hazard-chevron texture for the ramp lips.
+function makeChevronMaterial() {
+  const c = document.createElement('canvas');
+  c.width = 128; c.height = 32;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#f2c14e';
+  ctx.fillRect(0, 0, 128, 32);
+  ctx.fillStyle = '#1a1a1a';
+  for (let x = -32; x < 128; x += 24) {
+    ctx.beginPath();
+    ctx.moveTo(x, 32); ctx.lineTo(x + 12, 32); ctx.lineTo(x + 12 + 32, 0); ctx.lineTo(x + 32, 0);
+    ctx.closePath(); ctx.fill();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  return new THREE.MeshLambertMaterial({ map: tex });
+}
+
+// The three volcanoes ringing the park: a rugged cone, a snow cap that follows
+// the cone's slope, and (for Ngauruhoe) a lazy plume of smoke from the crater.
+function buildVolcanoes(group) {
+  for (const v of VOLCANOES) {
+    const g = new THREE.Group();
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(v.baseR, v.height, 36), lambert(v.color));
+    cone.position.y = v.height / 2 - 3;
+    g.add(cone);
+
+    // Ruapehu is a broad massif: add a second shoulder peak alongside.
+    if (v.twin) {
+      const peak2 = new THREE.Mesh(new THREE.ConeGeometry(v.baseR * 0.7, v.height * 0.82, 30), lambert(v.color));
+      peak2.position.set(v.baseR * 0.7, v.height * 0.82 / 2 - 3, -v.baseR * 0.3);
+      g.add(peak2);
+    }
+
+    // Snow cap: a white cone covering the top `snowFrac` of the mountain, sized
+    // so its base meets the cone's slope at that height.
+    const sf = v.snowFrac;
+    const snow = new THREE.Mesh(
+      new THREE.ConeGeometry(v.baseR * sf, v.height * sf, 36),
+      lambert(0xf4f8ff)
+    );
+    snow.position.y = v.height * (1 - sf / 2) - 3;
+    g.add(snow);
+
+    // A dark crater notch at the very top.
+    const crater = new THREE.Mesh(new THREE.CylinderGeometry(v.baseR * 0.1, v.baseR * 0.16, v.height * 0.05, 16), lambert(0x2a221c));
+    crater.position.y = v.height - 3.5;
+    g.add(crater);
+
+    if (v.smoke) {
+      const smokeMat = new THREE.MeshLambertMaterial({ color: 0xb6b0a8, transparent: true, opacity: 0.7 });
+      const rng = mulberry32(13);
+      for (let i = 0; i < 5; i++) {
+        const puff = new THREE.Mesh(new THREE.SphereGeometry(5 + i * 2.5, 10, 8), smokeMat);
+        puff.position.set((rng() - 0.5) * 8, v.height + 4 + i * 9, (rng() - 0.5) * 8);
+        g.add(puff);
+      }
+    }
+
+    g.position.set(v.x, 0, v.z);
+    group.add(g);
+  }
+}
+
+// Tongariro's Emerald Lakes: a couple of small vivid teal pools in the infield.
+function buildEmeraldLakes(group) {
+  const lakes = [
+    { f: 0.40, lat: -22, r: 7 },
+    { f: 0.58, lat: 18, r: 5 },
+  ];
+  for (const lk of lakes) {
+    const s = track.samples[Math.floor(lk.f * N)];
+    const p = latPoint(s, lk.lat);
+    const water = new THREE.Mesh(new THREE.CircleGeometry(lk.r, 22), lambert(0x1fb6a6));
+    water.rotation.x = -Math.PI / 2;
+    water.position.set(p.x, 0.03, p.z);
+    group.add(water);
+    // A pale mineral rim around each pool.
+    const rim = new THREE.Mesh(new THREE.RingGeometry(lk.r, lk.r + 1.4, 22), lambert(0xd9c9a0));
+    rim.rotation.x = -Math.PI / 2;
+    rim.position.set(p.x, 0.02, p.z);
+    group.add(rim);
+  }
+}
+
+// Volcanic boulders: solid roadside rocks that punish a wide line (added to
+// track.bales), plus a scatter of smaller scenery rocks across the terrain.
+function buildBoulders(group) {
+  const rockMat = lambert(0x6b6258);
+  const darkRock = lambert(0x4d463d);
+
+  // Obstacle boulders close to the racing line.
+  const spots = [
+    { f: 0.10, s: 1 }, { f: 0.30, s: -1 }, { f: 0.38, s: 1 },
+    { f: 0.55, s: -1 }, { f: 0.63, s: 1 }, { f: 0.84, s: -1 }, { f: 0.92, s: 1 },
+  ];
+  for (const sp of spots) {
+    const idx = Math.floor(sp.f * N);
+    // Keep boulders off the jump ramps so take-offs stay clean.
+    if (track.jumps.some((jp) => idxInRange(idx, jp.startIdx - 3, jp.lipIdx + 3))) continue;
+    const s = track.samples[idx];
+    const r = 1.5;
+    const pos = s.pos.clone().addScaledVector(s.normal, (track.roadHalf - 0.6) * sp.s);
+    const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(r, 0), rockMat);
+    rock.position.set(pos.x, r * 0.7, pos.z);
+    rock.rotation.set(Math.random(), Math.random() * Math.PI, Math.random());
+    rock.castShadow = true;
+    group.add(rock);
+    track.bales.push({ pos: new THREE.Vector3(pos.x, 0, pos.z), r: r + 0.3 });
+  }
+
+  // Scenery rocks dotted across the ground, well clear of the track.
+  const rng = mulberry32(57);
+  let placed = 0, tries = 0;
+  while (placed < 40 && tries < 600) {
+    tries++;
+    const x = (rng() - 0.5) * 380;
+    const z = (rng() - 0.5) * 340;
+    const p = new THREE.Vector3(x, 0, z);
+    let minD = Infinity;
+    for (let i = 0; i < N; i += 5) minD = Math.min(minD, p.distanceTo(track.samples[i].pos));
+    if (minD < 15) continue;
+    const r = 0.8 + rng() * 2.6;
+    const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(r, 0), rng() < 0.5 ? rockMat : darkRock);
+    rock.position.set(x, r * 0.6, z);
+    rock.rotation.set(rng() * Math.PI, rng() * Math.PI, rng() * Math.PI);
+    rock.castShadow = true;
+    group.add(rock);
+    placed++;
+  }
+}
+
+// Golden tussock clumps for the alpine-desert feel: little fans of grass blades.
+function buildTussock(group) {
+  const rng = mulberry32(88);
+  const tussockMat = lambert(0xb89b4e);
+  const bladeGeo = new THREE.ConeGeometry(0.5, 1.6, 5);
+  const count = 90;
+  const clumps = new THREE.InstancedMesh(bladeGeo, tussockMat, count);
+  const dummy = new THREE.Object3D();
+  let n = 0, tries = 0;
+  while (n < count && tries < 1200) {
+    tries++;
+    const x = (rng() - 0.5) * 360;
+    const z = (rng() - 0.5) * 320;
+    const p = new THREE.Vector3(x, 0, z);
+    let minD = Infinity;
+    for (let i = 0; i < N; i += 6) minD = Math.min(minD, p.distanceTo(track.samples[i].pos));
+    if (minD < 11) continue;
+    dummy.position.set(x, 0.7, z);
+    dummy.rotation.y = rng() * Math.PI;
+    const sc = 0.7 + rng() * 0.9;
+    dummy.scale.set(sc, sc, sc);
+    dummy.updateMatrix();
+    clumps.setMatrixAt(n++, dummy.matrix);
+  }
+  clumps.count = n;
+  clumps.castShadow = true;
+  group.add(clumps);
 }
