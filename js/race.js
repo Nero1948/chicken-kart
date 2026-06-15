@@ -34,6 +34,8 @@ export class Race {
         hud.showCountdown('GO!');
         audio.play('go');
         this.goT = 0.9;
+        // Lap timing starts now, so the countdown is excluded from lap times.
+        for (const k of this.karts) k.lapStart = this.clockTime;
       }
       return;
     }
@@ -61,9 +63,14 @@ export class Race {
         if (c !== -1) {
           kart.cp[c] = true;
         } else if (j === 0) {
-          if (kart.cp.every(Boolean)) {
+          if (kart.cp.every(Boolean) && !kart.finished) {
             kart.lap++;
-            if (kart.lap >= TOTAL_LAPS && !kart.finished) {
+            // Close out the lap that just finished and start timing the next one.
+            const lapTime = this.clockTime - kart.lapStart;
+            kart.lapStart = this.clockTime;
+            kart.lapTimes.push(lapTime);
+            if (kart.bestLap == null || lapTime < kart.bestLap) kart.bestLap = lapTime;
+            if (kart.lap >= TOTAL_LAPS) {
               kart.finished = true;
               kart.finishTime = this.clockTime;
             }

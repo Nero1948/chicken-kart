@@ -73,6 +73,9 @@ export class Kart {
     this.total = 0;
     this.finished = false;
     this.finishTime = 0;
+    this.lapStart = 0;   // clock time when the current lap began (set at GO)
+    this.lapTimes = [];  // completed lap durations this race, in seconds
+    this.bestLap = null; // fastest completed lap this race, in seconds
     this.rank = 1;
     this.wrongAccum = 0;
     this.wrongWay = false;

@@ -2,6 +2,7 @@
 
 import { track } from './track.js';
 import { TOTAL_LAPS } from './race.js';
+import { formatTime } from './records.js';
 
 const ICONS = { mine: '💣', missile: '🚀', boost: '⚡', llama: '🦙' };
 const ROLL_ICONS = ['💣', '🚀', '⚡', '🦙', '🎁'];
@@ -19,6 +20,8 @@ export function init() {
     hud: document.getElementById('hud'),
     position: document.getElementById('position'),
     lap: document.getElementById('lap'),
+    lapTime: document.getElementById('lapTime'),
+    bestLap: document.getElementById('bestLap'),
     itemIcon: document.getElementById('itemIcon'),
     minimap: document.getElementById('minimap'),
     wrongway: document.getElementById('wrongway'),
@@ -66,6 +69,14 @@ export function update(player, race, karts) {
   el.position.textContent = ORDINALS[player.rank - 1] || '';
   const lapShown = Math.min(player.lap + 1, TOTAL_LAPS);
   el.lap.textContent = player.finished ? 'Finished!' : `Lap ${lapShown}/${TOTAL_LAPS}`;
+
+  // Live lap timer: ticks up while racing, then freezes on the line / finish.
+  if (race.state === 'racing' && !player.finished) {
+    el.lapTime.textContent = formatTime(Math.max(0, race.clockTime - player.lapStart));
+  } else if (race.state === 'countdown') {
+    el.lapTime.textContent = formatTime(0);
+  }
+  el.bestLap.textContent = 'Best ' + formatTime(player.bestLap);
 
   if (player.rollT > 0) {
     const i = Math.floor(performance.now() / 80) % ROLL_ICONS.length;

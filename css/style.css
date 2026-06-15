@@ -153,6 +153,41 @@ html, body {
 .track-btns { flex-wrap: wrap; max-width: min(92vw, 560px); justify-content: center; }
 .track-btn { font-size: clamp(14px, 2vw, 18px); }
 
+/* ---------- Fastest-lap board (main menu) ---------- */
+
+.lap-board {
+  background: rgba(0,0,0,0.32);
+  border-radius: 18px;
+  padding: 12px 22px 14px;
+  min-width: min(360px, 86vw);
+}
+
+.board-title {
+  display: block;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: #fff7e0;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.45);
+  margin-bottom: 8px;
+}
+
+#lapBoardList { list-style: none; }
+
+#lapBoardList li {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  font-size: 17px;
+  font-weight: 700;
+  color: #fff;
+  padding: 5px 0;
+}
+
+#lapBoardList .lb-time { font-variant-numeric: tabular-nums; color: #ffe08a; }
+#lapBoardList .lb-time.none { color: rgba(255,255,255,0.5); }
+
 /* ---------- Character select cards ---------- */
 
 #cards {
@@ -239,6 +274,31 @@ html, body {
   text-shadow: 0 2px 4px rgba(0,0,0,0.5);
 }
 
+#lapInfo {
+  top: clamp(104px, 14.5vw, 138px);
+  left: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  color: #fff;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+}
+
+#lapTime {
+  font-size: clamp(19px, 2.8vw, 28px);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+#lapTime::before { content: '⏱ '; }
+
+#bestLap {
+  font-size: clamp(13px, 1.8vw, 16px);
+  font-weight: 700;
+  opacity: 0.85;
+  font-variant-numeric: tabular-nums;
+}
+
 #itemSlot {
   top: 18px;
   right: 22px;
@@ -317,6 +377,18 @@ html, body {
   color: #4a3a20;
   padding: 9px 6px;
   border-bottom: 2px dashed #eadfc4;
+}
+
+.lap-result {
+  font-size: clamp(17px, 2.6vw, 23px);
+  font-weight: 800;
+  color: #fff;
+  text-shadow: 0 2px 6px rgba(0,0,0,0.45);
+}
+
+.lap-result.record {
+  color: #ffd54a;
+  animation: bob 1.6s ease-in-out infinite;
 }
 
 #placings li:last-child { border-bottom: none; }

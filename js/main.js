@@ -2,7 +2,7 @@
 // main loop that drives everything else.
 
 import * as THREE from 'three';
-import { buildTrack, track, inBarn } from './track.js';
+import { buildTrack, track, inBarn, TRACKS } from './track.js';
 import { Kart, CHARACTERS, AI_ROSTER, resolveKartCollisions, resolveJumpStomps } from './kart.js';
 import { AIDriver } from './ai.js';
 import { ItemManager } from './items.js';
@@ -11,6 +11,7 @@ import { Cow } from './cow.js';
 import { Race } from './race.js';
 import * as hud from './hud.js';
 import { audio } from './audio.js';
+import * as records from './records.js';
 import { input, initInput, initTouch, updateInput, consumeFire } from './player.js';
 
 const ZERO_INPUT = { throttle: 0, steer: 0, brake: 0 };
@@ -60,6 +61,8 @@ const ui = {
   results: document.getElementById('results'),
   cards: document.getElementById('cards'),
   placings: document.getElementById('placings'),
+  lapResult: document.getElementById('lapResult'),
+  lapBoardList: document.getElementById('lapBoardList'),
   playBtn: document.getElementById('playBtn'),
   raceAgain: document.getElementById('raceAgain'),
   changeChicken: document.getElementById('changeChicken'),
@@ -118,6 +121,7 @@ function init() {
   initTouch();
   buildSelectCards();
   wireUi();
+  renderLapBoard();
 
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -305,6 +309,19 @@ function cleanupRace() {
   setTouchControls(false);
 }
 
+// Fill the main-menu board with each track's stored fastest lap.
+function renderLapBoard() {
+  ui.lapBoardList.innerHTML = '';
+  for (const def of Object.values(TRACKS)) {
+    const best = records.getBestLap(def.id);
+    const li = document.createElement('li');
+    li.innerHTML = `
+      <span class="lb-name">${def.name}</span>
+      <span class="lb-time${best == null ? ' none' : ''}">${records.formatTime(best)}</span>`;
+    ui.lapBoardList.appendChild(li);
+  }
+}
+
 function showResults() {
   state = 'results';
   setTouchControls(false);
@@ -320,6 +337,20 @@ function showResults() {
       ${kart.isPlayer ? '<span class="you-tag">YOU</span>' : ''}`;
     ui.placings.appendChild(li);
   });
+
+  // Report the player's fastest lap and crown a new track record if they beat it.
+  if (player.bestLap != null) {
+    const isRecord = records.recordLap(track.id, player.bestLap);
+    ui.lapResult.textContent = isRecord
+      ? `🏆 New lap record! ${records.formatTime(player.bestLap)}`
+      : `Fastest lap: ${records.formatTime(player.bestLap)}`;
+    ui.lapResult.classList.toggle('record', isRecord);
+    ui.lapResult.classList.remove('hidden');
+    renderLapBoard();
+  } else {
+    ui.lapResult.classList.add('hidden');
+  }
+
   ui.results.classList.remove('hidden');
 }
 
