@@ -209,6 +209,14 @@ class AudioSystem {
         this.noise(0.4, { vol: 0.05, freq: 500, delay: 0.12 });
         break;
       }
+      case 'moa': {
+        // a startled Moa: a deep booming descending honk over the clatter of
+        // its tossed-aside lawnmower.
+        this.tone(330, 0.3, { type: 'sawtooth', vol: 0.24, slide: -210, vibRate: 14, vibDepth: 30 });
+        this.tone(160, 0.4, { type: 'sine', vol: 0.22, slide: -70 });
+        this.noise(0.3, { vol: 0.22, freq: 1400 });
+        break;
+      }
       case 'jump':
         // a springy launch off the ramp
         this.tone(280, 0.28, { type: 'square', vol: 0.16, slide: 520 });

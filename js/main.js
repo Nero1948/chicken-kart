@@ -8,6 +8,7 @@ import { AIDriver } from './ai.js';
 import { ItemManager } from './items.js';
 import { Crossers } from './chickens.js';
 import { Cow } from './cow.js';
+import { Moa } from './moa.js';
 import { Race } from './race.js';
 import * as hud from './hud.js';
 import { audio } from './audio.js';
@@ -54,6 +55,7 @@ let race = null;
 let items = null;
 let crossers = null;
 let cow = null;
+let moa = null;
 let state = 'menu'; // menu | select | racing | results
 let chosenKey = 'chickpea';
 let resultTimer = 0;
@@ -381,6 +383,7 @@ function startRace(key) {
   items = new ItemManager(scene, race);
   crossers = new Crossers(scene);
   cow = new Cow(scene);
+  moa = new Moa(scene);
 
   resultTimer = 0;
   fanfarePlayed = false;
@@ -402,6 +405,7 @@ function cleanupRace() {
   if (items) items.dispose();
   if (crossers) crossers.dispose();
   if (cow) cow.dispose();
+  if (moa) moa.dispose();
   karts = [];
   drivers = [];
   player = null;
@@ -409,6 +413,7 @@ function cleanupRace() {
   items = null;
   crossers = null;
   cow = null;
+  moa = null;
   hud.hideCountdown();
   setTouchControls(false);
   if (ui.confetti) ui.confetti.innerHTML = '';
@@ -595,6 +600,7 @@ function animate() {
     items.update(dt);
     crossers.update(dt, karts, items.particles);
     cow.update(dt, karts, items.particles);
+    moa.update(dt, karts, items.particles);
     hud.update(player, race, karts);
     updateChaseCamera(dt);
 

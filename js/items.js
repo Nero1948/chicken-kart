@@ -322,8 +322,10 @@ export class ItemManager {
 
     const target = this.race.kartAhead(kart);
     this.llamas.push({
+      // Launches faster than a kart at full boost so it bolts away ahead of
+      // you instead of being rear-ended the instant it spawns.
       group, pos, owner: kart, target,
-      heading: kart.heading, speed: 26, life: 7, immuneT: 0.5,
+      heading: kart.heading, speed: 42, life: 7, immuneT: 0.5,
       idx: kart.idx, bob: 0,
     });
     audio.play('llama');
@@ -334,7 +336,7 @@ export class ItemManager {
       const L = this.llamas[i];
       L.life -= dt;
       if (L.immuneT > 0) L.immuneT -= dt;
-      L.speed = Math.min(46, L.speed + 22 * dt); // wind up to a full gallop
+      L.speed = Math.min(62, L.speed + 28 * dt); // wind up to a full gallop
 
       // Chase the car ahead, or follow the track if there is no target
       let desired;
