@@ -261,6 +261,7 @@ html, body {
 .stat-label { width: 78px; font-size: 12.5px; font-weight: 700; color: #6a5a40; text-align: right; }
 .stat-bar { flex: 1; height: 10px; background: #eee2c8; border-radius: 99px; overflow: hidden; }
 .stat-fill { height: 100%; border-radius: 99px; background: linear-gradient(90deg, #ffb300, #ff7a00); }
+.stat-num { width: 16px; font-size: 12px; font-weight: 800; color: #6a5a40; text-align: right; }
 
 /* ---------- HUD ---------- */
 

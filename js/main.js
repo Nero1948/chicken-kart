@@ -3,7 +3,7 @@
 
 import * as THREE from 'three';
 import { buildTrack, track, inBarn, TRACKS } from './track.js';
-import { Kart, CHARACTERS, UNLOCKABLES, AI_ROSTER, resolveKartCollisions, resolveJumpStomps } from './kart.js';
+import { Kart, CHARACTERS, UNLOCKABLES, AI_ROSTER, statBars, resolveKartCollisions, resolveJumpStomps } from './kart.js';
 import { AIDriver } from './ai.js';
 import { ItemManager } from './items.js';
 import { Crossers } from './chickens.js';
@@ -32,8 +32,9 @@ const DIFFICULTIES = {
 };
 let difficulty = 'medium';
 
-// Grand Prix: a series of races over both tracks, scored by finishing position.
-const GP_RACE_COUNT = 3;
+// Grand Prix: a series of races over all four tracks, scored by finishing
+// position, always ending on the hardest track (Mt Maunganui Beach).
+const GP_RACE_COUNT = 4;
 const GP_POINTS = [9, 6, 4, 3, 2, 1]; // points for 1st..6th each race
 let mode = 'single'; // 'single' | 'gp'
 let gp = null;        // { raceIndex, tracks, field, points }
@@ -287,7 +288,7 @@ function renderSelectCards() {
 
     if (locked) {
       const hint = def.tier === 'extreme'
-        ? 'Win every race of a Grand Prix on Extreme to unlock'
+        ? 'Win all four races of a Grand Prix on Extreme to unlock'
         : 'Win a Grand Prix to unlock this racer';
       card.innerHTML = `
         <div class="card-face locked-face">🔒</div>
@@ -295,10 +296,11 @@ function renderSelectCards() {
         <div class="card-tag">${hint}</div>`;
     } else {
       const kartHex = '#' + def.kart.toString(16).padStart(6, '0');
-      const statRows = Object.entries(def.bars).map(([label, v]) => `
+      const statRows = Object.entries(statBars(def)).map(([label, v]) => `
         <div class="stat">
           <span class="stat-label">${label}</span>
           <span class="stat-bar"><span class="stat-fill" style="width:${Math.round(v * 100)}%"></span></span>
+          <span class="stat-num">${Math.round(v * 10)}</span>
         </div>`).join('');
       card.innerHTML = `
         <div class="card-face" style="background:${kartHex}33; border: 4px solid ${kartHex}">
@@ -328,13 +330,14 @@ function buildSingleField(key) {
   return [playerDef, ...pool.slice(0, 5)];
 }
 
-// Set up a fresh Grand Prix: one race on each of the three tracks in a random
-// order, one fixed field, points carried across all races. `wonAll` stays true
+// Set up a fresh Grand Prix: one race on each of the four tracks, the first
+// three shuffled and the hardest (Mt Maunganui Beach) always last as a grand
+// finale. One fixed field, points carried across all races. `wonAll` stays true
 // only while the player has won every race so far (the Extreme unlock test).
 function startGrandPrix(key) {
   gp = {
     raceIndex: 0,
-    tracks: shuffle(['farm', 'city', 'park']),
+    tracks: [...shuffle(['farm', 'city', 'park']), 'beach'],
     field: buildSingleField(key),
     points: {},
     wonAll: true,

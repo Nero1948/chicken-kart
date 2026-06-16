@@ -96,6 +96,40 @@ const PARK_PTS = [
   [-46, -90],   // 19 sweep back to the start line
 ];
 
+// Mt Maunganui Beach: the tightest, most technical loop in the game. The sea
+// runs the whole way along the east (seaward, +x) side; the inland (west) side
+// is dunes. The lap packs in two hairpins and several stacked S-bends so it is
+// clearly the hardest to drive at speed. The control points are laid out so the
+// curve never crosses the seaward boundary line at x = SEA_EDGE.
+const SEA_EDGE = 150; // beach: everything east of this x line is open water
+const BEACH_PTS = [
+  [0, -92],      // 0  start / finish (bottom centre), heading east toward the sea
+  [40, -90],     // 1  start straight, kept flat for the grid
+  [78, -82],     // 2  sweeping right toward the shoreline
+  [104, -60],    // 3  shoreline approach (sea close on the right)
+  [96, -30],     // 4  S-bend: flick back inland
+  [120, -12],    // 5  S-bend: flick seaward again (tight S)
+  [104, 14],     // 6  S-bend: back inland
+  [128, 34],     // 7  push out to the seawall
+  [118, 60],     // 8  hairpin entry along the shore
+  [128, 84],     // 9  hairpin tip (top-right, by the sea)
+  [96, 90],      // 10 hairpin exit, doubling back west
+  [82, 64],      // 11 return leg running back south a touch
+  [54, 78],      // 12 kink out toward the top straight
+  [16, 92],      // 13 top of the loop
+  [-30, 86],     // 14 inland sweep begins
+  [-66, 100],    // 15 chicane: jog north (left flick)
+  [-92, 76],     // 16 chicane: jog south (right flick) -> tight S in the dunes
+  [-118, 92],    // 17 swing out to the far dune
+  [-138, 64],    // 18 dune hairpin entry
+  [-150, 34],    // 19 dune hairpin tip (far west)
+  [-128, 10],    // 20 hairpin exit heading back east-ish
+  [-138, -20],   // 21 down the inland straight (dune jumps live here)
+  [-118, -52],   // 22 sweep toward the bottom
+  [-86, -78],    // 23 final S into the start
+  [-44, -92],    // 24 sweep back to the start line
+];
+
 /* ------------------------- the shared track object ------------------------- */
 
 export const track = {
@@ -139,6 +173,11 @@ export const TRACKS = {
     id: 'park', name: 'Tongariro Park', roadHalf: 7.5, limit: 13, pts: PARK_PTS,
     theme: { sky: 0x8fc1e3, fog: [340, 980] },
     build: buildPark,
+  },
+  beach: {
+    id: 'beach', name: 'Mt Maunganui Beach', roadHalf: 6.5, limit: 11.5, pts: BEACH_PTS,
+    theme: { sky: 0x8fd0ec, fog: [220, 520] },
+    build: buildBeach,
   },
 };
 
@@ -1694,4 +1733,290 @@ function buildTussock(group) {
   clumps.count = n;
   clumps.castShadow = true;
   group.add(clumps);
+}
+
+/* ===================================================================== */
+/* ======================  MT MAUNGANUI BEACH  ======================== */
+/* ===================================================================== */
+
+// Mauao (the Mount): the iconic green headland at the end of the beach. A single
+// steep, tall cone placed past the start/finish line so it dominates the
+// horizon as you cross the line. Seaward (+x), well beyond the racing line.
+const MAUAO = { x: 120, z: 320, baseR: 92, height: 196 };
+
+function buildBeach(group) {
+  computeBeachJumps();
+  buildBeachOcean(group);
+  buildBeachGround(group);
+  buildRoad(group, { color: 0xc8b07e, shadeAmt: 0.14, shadeBase: 0.9, seed: 31 }); // firm wet sand
+  buildStartLine(group);
+  buildRoadside(group, { offset: 11.5, postW: 0.22, postH: 0.9, rails: [0.5], color: 0xe8dcc0 });
+  buildBeachJumps(group);
+  buildMauao(group);
+  buildDunes(group);
+  buildDriftwood(group);
+  buildBeachUmbrellas(group);
+  buildBanner(group, 'MT MAUNGANUI BEACH', '#1f8ab0');
+  buildClouds(group, 6);
+  // Item box rows on the flatter stretches, kept clear of the dune jumps.
+  setBoxSpots([0.07, 0.33, 0.58, 0.84]);
+  track.specialBoxes = [
+    { pos: track.samples[Math.floor(0.27 * N)].pos.clone() },
+    { pos: track.samples[Math.floor(0.80 * N)].pos.clone() },
+  ];
+}
+
+// Two dune jump ramps on the inland straight (the long west-side run between the
+// dune hairpin and the bottom S). They reuse the shared jump machinery.
+function computeBeachJumps() {
+  const defs = [
+    { lip: 0.62, height: 2.4 },
+    { lip: 0.70, height: 2.7 },
+  ];
+  track.jumps = defs.map((d) => {
+    const lipIdx = Math.floor(d.lip * N);
+    return { startIdx: (lipIdx - 6 + N) % N, lipIdx, height: d.height };
+  });
+}
+
+// The sea: a big water plane covering the whole seaward (east) side. It sits
+// slightly below ground so the sand reads as the beach sloping into the water.
+function buildBeachOcean(group) {
+  const water = new THREE.Mesh(
+    new THREE.PlaneGeometry(1600, 1600),
+    new THREE.MeshLambertMaterial({ color: 0x2f6f9c })
+  );
+  water.rotation.x = -Math.PI / 2;
+  water.position.set(SEA_EDGE + 800, -0.6, 0); // its near edge sits at x = SEA_EDGE
+  group.add(water);
+
+  // A foamy wet-sand strip right along the waterline for contrast.
+  const foam = new THREE.Mesh(new THREE.PlaneGeometry(6, 1200), lambert(0xeae0c8));
+  foam.rotation.x = -Math.PI / 2;
+  foam.position.set(SEA_EDGE - 2, 0.0, 0);
+  group.add(foam);
+}
+
+// Warm dry sand for the beach ground (the inland half of the world).
+function buildBeachGround(group) {
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(1500, 1500), lambert(0xd6c08a));
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.set(-200, -0.02, 0); // pushed inland so it does not cover the sea
+  ground.receiveShadow = true;
+  group.add(ground);
+}
+
+// Mauao: a single steep green cone (no snow), with a darker base band, standing
+// proud on the seaward horizon past the start/finish line.
+function buildMauao(group) {
+  const g = new THREE.Group();
+  const cone = new THREE.Mesh(new THREE.ConeGeometry(MAUAO.baseR, MAUAO.height, 40), lambert(0x3f7d3a));
+  cone.position.y = MAUAO.height / 2 - 3;
+  cone.castShadow = true;
+  g.add(cone);
+
+  // Darker forested lower flanks: a short, wider cone skirting the base.
+  const base = new THREE.Mesh(new THREE.ConeGeometry(MAUAO.baseR * 1.12, MAUAO.height * 0.32, 40), lambert(0x2f5f2c));
+  base.position.y = MAUAO.height * 0.16 - 3;
+  g.add(base);
+
+  // A rocky crown notch at the very top.
+  const crown = new THREE.Mesh(new THREE.CylinderGeometry(MAUAO.baseR * 0.08, MAUAO.baseR * 0.14, MAUAO.height * 0.04, 14), lambert(0x6b6258));
+  crown.position.y = MAUAO.height - 4;
+  g.add(crown);
+
+  g.position.set(MAUAO.x, 0, MAUAO.z);
+  group.add(g);
+}
+
+// Sand dunes on the inland (west, seaward-negative) side: raised sandy mounds,
+// the ones on the jump straight doubling as the ramp support berms.
+function buildDunes(group) {
+  const sand = lambert(0xcdb87f);
+  const marram = lambert(0x9fae5a); // dune grass tint on the larger mounds
+
+  // Big scenic dune mounds dotted along the inland edge of the loop.
+  const spots = [
+    { f: 0.16, lat: -16, r: 7, h: 4 },
+    { f: 0.46, lat: -18, r: 9, h: 5 },
+    { f: 0.55, lat: -15, r: 6, h: 3.5 },
+    { f: 0.78, lat: -17, r: 8, h: 4.5 },
+    { f: 0.90, lat: -16, r: 7, h: 4 },
+  ];
+  for (const sp of spots) {
+    const idx = Math.floor(sp.f * N);
+    const s = track.samples[idx];
+    // The sea is always at high +x, so the inland side is the one whose normal
+    // points toward negative x. Place the dune there, sp.lat away from the road.
+    const inland = s.normal.x < 0 ? 1 : -1;
+    const p = latPoint(s, Math.abs(sp.lat) * inland);
+    const dune = new THREE.Mesh(new THREE.SphereGeometry(sp.r, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), sand);
+    dune.scale.set(1.4, sp.h / sp.r, 1.0);
+    dune.position.set(p.x, -0.2, p.z);
+    dune.rotation.y = Math.atan2(s.tan.x, s.tan.z);
+    dune.castShadow = true;
+    dune.receiveShadow = true;
+    group.add(dune);
+    // A grassy cap tuft on top of the larger dunes.
+    if (sp.r >= 7) {
+      const cap = new THREE.Mesh(new THREE.SphereGeometry(sp.r * 0.5, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2), marram);
+      cap.scale.set(1.2, (sp.h * 0.5) / (sp.r * 0.5), 0.9);
+      cap.position.set(p.x, sp.h * 0.45 - 0.2, p.z);
+      group.add(cap);
+    }
+  }
+
+  // A low continuous dune ridge well inland, purely scenic on the horizon.
+  const rng = mulberry32(64);
+  for (let i = 0; i < N; i += 14) {
+    const s = track.samples[i];
+    const inland = s.normal.x < 0 ? 1 : -1;
+    const p = latPoint(s, (42 + rng() * 14) * inland);
+    const r = 6 + rng() * 6;
+    const ridge = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2), sand);
+    ridge.scale.set(1.6, (3 + rng() * 3) / r, 1.0);
+    ridge.position.set(p.x, -0.3, p.z);
+    ridge.rotation.y = rng() * Math.PI;
+    group.add(ridge);
+  }
+}
+
+// Build the dune jump ramps: a chevron caution lip plank at each take-off,
+// flanked by sandy support berms, sitting on the road that rises to meet it.
+function buildBeachJumps(parent) {
+  const g = new THREE.Group();
+  const sand = lambert(0xcdb87f);
+  for (const jp of track.jumps) {
+    const lipS = track.samples[jp.lipIdx];
+    const lp = latPoint(lipS, 0);
+    lp.y = surfaceY(jp.lipIdx, 0);
+
+    const lip = new THREE.Mesh(
+      new THREE.BoxGeometry(track.roadHalf * 2, 0.45, 1.0),
+      makeChevronMaterial()
+    );
+    lip.position.copy(lp);
+    lip.position.y += 0.18;
+    lip.lookAt(lp.x + lipS.tan.x, lp.y + 0.18, lp.z + lipS.tan.z);
+    lip.castShadow = true;
+    g.add(lip);
+
+    // Sandy berms either side of the take-off shaping the ramp.
+    for (const side of [-1, 1]) {
+      const bp = latPoint(lipS, side * (track.roadHalf + 0.9));
+      bp.y = surfaceY(jp.lipIdx, 0) * 0.5;
+      const mound = new THREE.Mesh(new THREE.ConeGeometry(2.0, jp.height + 1.2, 8), sand);
+      mound.position.set(bp.x, bp.y, bp.z);
+      mound.castShadow = true;
+      g.add(mound);
+    }
+  }
+  parent.add(g);
+}
+
+// Driftwood logs and rocks near the racing line: solid obstacles that punish a
+// wide line (added to track.bales), plus a scatter of beach rocks for flavour.
+function buildDriftwood(group) {
+  const wood = lambert(0x9c8156);
+  const paleWood = lambert(0xb6a079);
+  const rockMat = lambert(0x807868);
+
+  // Obstacle driftwood logs close to the racing line.
+  const logSpots = [
+    { f: 0.12, s: 1 }, { f: 0.24, s: -1 }, { f: 0.40, s: 1 },
+    { f: 0.52, s: -1 }, { f: 0.66, s: 1 }, { f: 0.88, s: -1 },
+  ];
+  const logGeo = new THREE.CylinderGeometry(0.9, 1.0, 3.4, 10);
+  for (const sp of logSpots) {
+    const idx = Math.floor(sp.f * N);
+    // Keep logs off the dune jumps so take-offs stay clean.
+    if (track.jumps.some((jp) => idxInRange(idx, jp.startIdx - 3, jp.lipIdx + 3))) continue;
+    const s = track.samples[idx];
+    const pos = s.pos.clone().addScaledVector(s.normal, (track.roadHalf - 0.6) * sp.s);
+    const log = new THREE.Mesh(logGeo, sp.s > 0 ? wood : paleWood);
+    log.rotation.z = Math.PI / 2;
+    log.rotation.y = Math.atan2(s.tan.x, s.tan.z) + 0.3;
+    log.position.set(pos.x, 0.9, pos.z);
+    log.castShadow = true;
+    group.add(log);
+    track.bales.push({ pos: new THREE.Vector3(pos.x, 0, pos.z), r: 1.7 });
+  }
+
+  // Obstacle rocks dotted at a couple of corners too.
+  const rockSpots = [{ f: 0.34, s: 1 }, { f: 0.74, s: -1 } ];
+  for (const sp of rockSpots) {
+    const idx = Math.floor(sp.f * N);
+    if (track.jumps.some((jp) => idxInRange(idx, jp.startIdx - 3, jp.lipIdx + 3))) continue;
+    const s = track.samples[idx];
+    const r = 1.5;
+    const pos = s.pos.clone().addScaledVector(s.normal, (track.roadHalf - 0.5) * sp.s);
+    const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(r, 0), rockMat);
+    rock.position.set(pos.x, r * 0.7, pos.z);
+    rock.rotation.set(Math.random(), Math.random() * Math.PI, Math.random());
+    rock.castShadow = true;
+    group.add(rock);
+    track.bales.push({ pos: new THREE.Vector3(pos.x, 0, pos.z), r: r + 0.3 });
+  }
+
+  // Scenery driftwood and shells scattered across the dry sand, well clear of
+  // the racing line so they are decoration only.
+  const rng = mulberry32(83);
+  let placed = 0, tries = 0;
+  while (placed < 26 && tries < 500) {
+    tries++;
+    const x = -40 - rng() * 220;
+    const z = (rng() - 0.5) * 360;
+    const p = new THREE.Vector3(x, 0, z);
+    let minD = Infinity;
+    for (let i = 0; i < N; i += 5) minD = Math.min(minD, p.distanceTo(track.samples[i].pos));
+    if (minD < 13) continue;
+    if (rng() < 0.6) {
+      const stick = new THREE.Mesh(logGeo, rng() < 0.5 ? wood : paleWood);
+      stick.rotation.z = Math.PI / 2;
+      stick.rotation.y = rng() * Math.PI;
+      const sc = 0.5 + rng() * 0.7;
+      stick.scale.setScalar(sc);
+      stick.position.set(x, 0.6 * sc, z);
+      stick.castShadow = true;
+      group.add(stick);
+    } else {
+      const r = 0.6 + rng() * 1.4;
+      const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(r, 0), rockMat);
+      rock.position.set(x, r * 0.6, z);
+      rock.rotation.set(rng() * Math.PI, rng() * Math.PI, rng() * Math.PI);
+      rock.castShadow = true;
+      group.add(rock);
+    }
+    placed++;
+  }
+}
+
+// A few cheery beach umbrellas on the dry sand for seaside flavour (decorative,
+// kept off the racing line).
+function buildBeachUmbrellas(group) {
+  const rng = mulberry32(101);
+  const poleMat = lambert(0xece6d8);
+  const colours = [0xe2483b, 0xf3b733, 0x2f9bd6, 0xe06aa6];
+  let placed = 0, tries = 0;
+  while (placed < 7 && tries < 200) {
+    tries++;
+    const x = -30 - rng() * 120;
+    const z = (rng() - 0.5) * 300;
+    const p = new THREE.Vector3(x, 0, z);
+    let minD = Infinity;
+    for (let i = 0; i < N; i += 6) minD = Math.min(minD, p.distanceTo(track.samples[i].pos));
+    if (minD < 16) continue;
+    const u = new THREE.Group();
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 3, 8), poleMat);
+    pole.position.y = 1.5;
+    u.add(pole);
+    const canopy = new THREE.Mesh(new THREE.ConeGeometry(2.0, 1.0, 10), lambert(colours[Math.floor(rng() * colours.length)]));
+    canopy.position.y = 3.1;
+    canopy.castShadow = true;
+    u.add(canopy);
+    u.position.set(x, 0, z);
+    u.rotation.y = rng() * Math.PI;
+    group.add(u);
+    placed++;
+  }
 }

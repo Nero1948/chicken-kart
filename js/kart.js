@@ -4,73 +4,79 @@ import * as THREE from 'three';
 import { track, nearestIdx, lateralOffset, inMud, surfaceY, atRampLip, tunnelLane, barnLane } from './track.js';
 import { audio } from './audio.js';
 
-// The three playable racers. Stats are real physics numbers; the 0-1 "bars"
-// are just for the character select screen.
+// Stats are the real physics numbers used while driving. The 0-1 "bars" shown
+// on the character select screen are derived from these via statBars() below,
+// so what you see always matches how the kart actually drives.
 export const CHARACTERS = {
   chickpea: {
     key: 'chickpea', name: 'Chickpea',
-    tagline: 'The all-rounder. Steady, speedy, dependable.',
+    tagline: 'The all-rounder. No weakness, no specialty.',
     body: 0xf2c14e, kart: 0x3f9b46,
-    maxSpeed: 30, accel: 24, steer: 2.3,
-    bars: { Speed: 0.7, Acceleration: 0.7, Handling: 0.7 },
+    maxSpeed: 30, accel: 24, steer: 2.4,
   },
   heyhey: {
     key: 'heyhey', name: 'Heyhey',
-    tagline: 'Top speed terror. Hold on to your feathers!',
+    tagline: 'Blistering top speed, but slow off the line and turns like a bus.',
     body: 0xffffff, kart: 0xd93636,
-    maxSpeed: 33, accel: 19, steer: 1.85, sunglasses: true,
-    bars: { Speed: 0.95, Acceleration: 0.5, Handling: 0.5 },
+    maxSpeed: 36, accel: 17, steer: 1.95, sunglasses: true,
   },
   laya: {
     key: 'laya', name: 'Princess Laya',
-    tagline: 'Royal handling. Corners like a dream.',
+    tagline: 'Razor handling and a rocket launch, but low top speed.',
     body: 0xfbe3cf, kart: 0xe86fb4,
-    maxSpeed: 28, accel: 30, steer: 2.85, crown: true,
-    bars: { Speed: 0.55, Acceleration: 0.9, Handling: 0.95 },
+    maxSpeed: 27, accel: 31, steer: 3.05, crown: true,
   },
 };
 
+// Map the real physics stats onto 0-1 bars for the select screen. Single source
+// of truth so the bars can never disagree with how the kart actually drives.
+export function statBars(def) {
+  const norm = (v, lo, hi) => Math.max(0.05, Math.min(1, (v - lo) / (hi - lo)));
+  return {
+    Speed: norm(def.maxSpeed, 25, 37),
+    Acceleration: norm(def.accel, 15, 33),
+    Handling: norm(def.steer, 1.7, 3.1),
+  };
+}
+
 // Fancy racers earned by winning a Grand Prix. They start locked and are
-// revealed one at a time on the character select screen. `tier` decides how
-// each is earned: 'gp' racers come from any cup win, 'extreme' racers demand a
-// clean sweep (winning every race) of a Grand Prix on Extreme difficulty.
+// revealed one at a time on the character select screen, in this object's order.
+// `tier` decides how each is earned: 'gp' racers come from any cup win;
+// 'extreme' racers demand a clean sweep (winning every race) of a four-track
+// Grand Prix on Extreme difficulty. Summit, the lone extreme legend, sits last
+// as the game's ultimate grand prize.
 export const UNLOCKABLES = {
   sir: {
     key: 'sir', name: 'Sir Cluckington', locked: true, tier: 'gp',
-    tagline: 'A dapper gentleman of remarkable speed.',
-    body: 0xfff0d8, kart: 0x2b2b33, maxSpeed: 31, accel: 25, steer: 2.45,
+    tagline: 'A dapper gentleman. Quick all round with a fine top gear.',
+    body: 0xfff0d8, kart: 0x2b2b33, maxSpeed: 32, accel: 23, steer: 2.35,
     tophat: true, bowtie: true,
-    bars: { Speed: 0.8, Acceleration: 0.75, Handling: 0.75 },
   },
   disco: {
     key: 'disco', name: 'Disco Diva', locked: true, tier: 'gp',
-    tagline: 'Sparkle, shimmy and shine to the finish!',
-    body: 0xf2c200, kart: 0xff4fae, maxSpeed: 30, accel: 28, steer: 2.7,
+    tagline: 'Lightning launch and dazzling handling. Top speed? Not so much.',
+    body: 0xf2c200, kart: 0xff4fae, maxSpeed: 28, accel: 31, steer: 2.9,
     crown: true, sunglasses: true,
-    bars: { Speed: 0.7, Acceleration: 0.9, Handling: 0.9 },
   },
   captain: {
     key: 'captain', name: 'Captain Cluck', locked: true, tier: 'gp',
-    tagline: 'Super-powered hero of the henhouse!',
-    body: 0xff5a3c, kart: 0x2a4cd0, maxSpeed: 33, accel: 25, steer: 2.5,
+    tagline: 'A heavyweight powerhouse. Mighty fast, but a beast to steer.',
+    body: 0xff5a3c, kart: 0x2a4cd0, maxSpeed: 34, accel: 21, steer: 2.2,
     cape: true, capeColor: 0xd81e3a, mask: true, maskColor: 0x12246e,
-    bars: { Speed: 0.9, Acceleration: 0.75, Handling: 0.8 },
   },
-  // Extreme-tier legends: only a clean sweep of an Extreme Grand Prix reveals
-  // them. Themed to the volcanoes of Tongariro Park: fire and ice.
   lava: {
-    key: 'lava', name: 'Lava Lou', locked: true, tier: 'extreme',
-    tagline: 'Forged in the fire of Ngauruhoe. Pure molten speed.',
-    body: 0xff5a1e, kart: 0x201510, maxSpeed: 34, accel: 27, steer: 2.55,
+    key: 'lava', name: 'Lava Lou', locked: true, tier: 'gp',
+    tagline: 'Forged in the fire of Ngauruhoe. The fastest flat-out, but sluggish and stubborn.',
+    body: 0xff5a1e, kart: 0x201510, maxSpeed: 35, accel: 20, steer: 2.1,
     sunglasses: true, cape: true, capeColor: 0xff7a1a,
-    bars: { Speed: 0.98, Acceleration: 0.85, Handling: 0.8 },
   },
+  // The ultimate legend: only a clean sweep of all four tracks on Extreme
+  // reveals her. Strong everywhere, with no real weakness.
   summit: {
     key: 'summit', name: 'Summit', locked: true, tier: 'extreme',
-    tagline: 'Queen of the snowy peaks. Untouchable on the line.',
-    body: 0xeaf6ff, kart: 0x2e6fb0, maxSpeed: 33, accel: 30, steer: 2.85,
+    tagline: 'Queen of the snowy peaks. Untouchable: fast, nimble and quick off the line.',
+    body: 0xeaf6ff, kart: 0x2e6fb0, maxSpeed: 34, accel: 29, steer: 2.95,
     crown: true, cape: true, capeColor: 0x9fd8ff,
-    bars: { Speed: 0.9, Acceleration: 0.95, Handling: 0.95 },
   },
 };
 
