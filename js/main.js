@@ -36,12 +36,17 @@ let difficulty = 'medium';
 // position, always ending on the hardest track (Mt Maunganui Beach).
 const GP_RACE_COUNT = 4;
 const GP_POINTS = [9, 6, 4, 3, 2, 1]; // points for 1st..6th each race
-let mode = 'single'; // 'single' | 'gp'
+let mode = 'single'; // 'single' | 'gp' | 'elim'
 let gp = null;        // { raceIndex, tracks, field, points }
+
+// Elimination tournament: a six-racer knockout. Each race the last-placed
+// racer is dropped until one champion remains. Survive to the end and you win
+// a trophy and unlock the motorbike. `field` shrinks every round.
+let elim = null;      // { raceIndex, tracks, field, eliminated, diff }
 
 // Emoji shown on each racer's select card (declared up here so it is ready
 // before init() builds the cards on first load).
-const CARD_HATS = { laya: '👑', heyhey: '🕶️', sir: '🎩', disco: '🪩', captain: '🦸', lava: '🌋', summit: '❄️' };
+const CARD_HATS = { laya: '👑', heyhey: '🕶️', sir: '🎩', disco: '🪩', captain: '🦸', lava: '🌋', summit: '❄️', moto: '🏍️' };
 
 let renderer, scene, camera, hemi, sun;
 let darkness = 0;     // 0 = daylight, 1 = inside the dark barn
@@ -90,6 +95,7 @@ const ui = {
   gpHeading: document.getElementById('gpHeading'),
   gpStandings: document.getElementById('gpStandings'),
   unlockMsg: document.getElementById('unlockMsg'),
+  trophy: document.getElementById('trophy'),
   confetti: document.getElementById('confetti'),
   speedLines: document.getElementById('speedLines'),
   playBtn: document.getElementById('playBtn'),
@@ -172,7 +178,9 @@ function wireUi() {
     btn.addEventListener('click', () => {
       mode = btn.dataset.mode;
       ui.modeBtns.forEach((b) => b.classList.toggle('active', b === btn));
-      ui.trackSel.classList.toggle('hidden', mode === 'gp');
+      // The track picker only applies to single races; a cup or tournament
+      // picks its own tracks.
+      ui.trackSel.classList.toggle('hidden', mode !== 'single');
       btn.blur();
     });
   });
@@ -205,10 +213,12 @@ function wireUi() {
     state = 'select';
   });
 
-  // Next race in a Grand Prix: keep the same field, move to the next track.
+  // Next race in a series (Grand Prix or Elimination): keep the surviving
+  // field and move to the next track.
   ui.nextRace.addEventListener('click', () => {
     ui.nextRace.blur();
-    gp.raceIndex++;
+    if (mode === 'gp') gp.raceIndex++;
+    else if (mode === 'elim') elim.raceIndex++;
     cleanupRace();
     ui.results.classList.add('hidden');
     startRace(chosenKey);
@@ -226,6 +236,7 @@ function wireUi() {
     ui.changeChicken.blur();
     cleanupRace();
     gp = null;
+    elim = null;
     renderSelectCards();
     ui.results.classList.add('hidden');
     hud.hide();
@@ -240,6 +251,7 @@ function wireUi() {
     ui.mainMenu.blur();
     cleanupRace();
     gp = null;
+    elim = null;
     ui.results.classList.add('hidden');
     hud.hide();
     setTouchControls(false);
@@ -289,6 +301,8 @@ function renderSelectCards() {
     if (locked) {
       const hint = def.tier === 'extreme'
         ? 'Win all four races of a Grand Prix on Extreme to unlock'
+        : def.tier === 'tournament'
+        ? 'Win an Elimination tournament to unlock'
         : 'Win a Grand Prix to unlock this racer';
       card.innerHTML = `
         <div class="card-face locked-face">🔒</div>
@@ -346,6 +360,19 @@ function startGrandPrix(key) {
   for (const d of gp.field) gp.points[d.key] = 0;
 }
 
+// Set up a fresh Elimination tournament: a six-racer knockout over five rounds
+// (6 -> 5 -> 4 -> 3 -> 2 -> 1). Each round runs on its own track, the first
+// four shuffled and Mt Maunganui Beach saved as the grand-final showdown.
+function startElimination(key) {
+  elim = {
+    raceIndex: 0,
+    tracks: [...shuffle(['farm', 'city', 'park', 'beach']), 'beach'],
+    field: buildSingleField(key), // six defs, player first; shrinks each round
+    eliminated: [],               // defs in the order they were knocked out
+    diff: difficulty,
+  };
+}
+
 function startRace(key) {
   // Work out which track to race and who is on the grid.
   let trackId, field;
@@ -353,6 +380,10 @@ function startRace(key) {
     if (!gp) startGrandPrix(key);
     trackId = gp.tracks[gp.raceIndex];
     field = gp.field;
+  } else if (mode === 'elim') {
+    if (!elim) startElimination(key);
+    trackId = elim.tracks[elim.raceIndex];
+    field = elim.field;
   } else {
     trackId = selectedTrack;
     field = buildSingleField(key);
@@ -378,9 +409,12 @@ function startRace(key) {
     drivers.push(new AIDriver(kart, skills[i % skills.length], diff));
   });
 
-  // Grid slots: front row first. The player starts second to last.
-  const order = [karts[1], karts[2], karts[3], karts[4], player, karts[5]];
+  // Grid slots: front row first, AI rivals ahead and the player slotted in
+  // second to last. Works for any field size (Elimination shrinks the grid).
+  const order = karts.slice(1); // the AI rivals
+  order.splice(Math.max(0, order.length - 1), 0, player);
   order.forEach((kart, i) => kart.placeAt(track.startGrid[i]));
+  const startRank = order.indexOf(player) + 1;
 
   race = new Race(karts, player);
   items = new ItemManager(scene, race);
@@ -390,7 +424,7 @@ function startRace(key) {
 
   resultTimer = 0;
   fanfarePlayed = false;
-  lastPlayerRank = 5; // the player lines up 5th on the grid
+  lastPlayerRank = startRank; // where the player lines up on the grid
   state = 'racing';
   ui.results.classList.add('hidden');
   if (ui.confetti) ui.confetti.innerHTML = '';
@@ -420,6 +454,7 @@ function cleanupRace() {
   hud.hideCountdown();
   setTouchControls(false);
   if (ui.confetti) ui.confetti.innerHTML = '';
+  if (ui.trophy) ui.trophy.classList.add('hidden');
   if (ui.speedLines) ui.speedLines.classList.remove('on');
 }
 
@@ -439,6 +474,7 @@ function renderLapBoard() {
 function showResults() {
   state = 'results';
   setTouchControls(false);
+  if (ui.trophy) ui.trophy.classList.add('hidden');
   const sorted = race.updateRanks();
   const medals = ['🥇', '🥈', '🥉', '4th', '5th', '6th'];
   ui.placings.innerHTML = '';
@@ -482,6 +518,8 @@ function showResults() {
       ui.unlockMsg.classList.add('hidden');
       setResultButtons({ next: true });
     }
+  } else if (mode === 'elim') {
+    handleElimination(sorted);
   } else {
     ui.gpHeading.classList.add('hidden');
     ui.gpStandings.classList.add('hidden');
@@ -493,14 +531,16 @@ function showResults() {
   ui.results.classList.remove('hidden');
 }
 
-// Show/hide the right buttons for the situation. Mid-cup we only offer "Next
-// race"; otherwise the single-race buttons (re-race / change / menu) apply.
+// Show/hide the right buttons for the situation. Mid-series (a cup or
+// tournament still running) we only offer "Next race"; otherwise the
+// single-race buttons (re-race / change / menu) apply.
 function setResultButtons({ next }) {
-  const midCup = mode === 'gp' && next;
+  const midSeries = next;
   ui.nextRace.classList.toggle('hidden', !next);
-  ui.raceAgain.classList.toggle('hidden', midCup);
-  ui.changeChicken.classList.toggle('hidden', midCup);
-  ui.raceAgain.textContent = mode === 'gp' ? 'New cup' : 'Race again';
+  ui.raceAgain.classList.toggle('hidden', midSeries);
+  ui.changeChicken.classList.toggle('hidden', midSeries);
+  ui.raceAgain.textContent = mode === 'gp' ? 'New cup'
+    : mode === 'elim' ? 'New tournament' : 'Race again';
 }
 
 function renderGpStandings() {
@@ -559,6 +599,73 @@ function finishGrandPrix() {
 
   gp = null; // cup is over; "New cup" will start a fresh one
   setResultButtons({ next: false });
+}
+
+// Resolve one round of an Elimination tournament: the last-placed racer is
+// knocked out. If that's the player the run is over; if the player is the last
+// one standing they win the trophy and the motorbike; otherwise we tee up the
+// next round on a fresh track.
+function handleElimination(sorted) {
+  const knockedOut = sorted[sorted.length - 1];
+  elim.field = elim.field.filter((d) => d.key !== knockedOut.def.key);
+  elim.eliminated.push(knockedOut.def);
+
+  renderElimStandings(sorted, knockedOut);
+  ui.gpStandings.classList.remove('hidden');
+  ui.gpHeading.classList.remove('hidden');
+
+  if (knockedOut.isPlayer) {
+    // The player finished last and is out of the tournament.
+    ui.gpHeading.textContent = '💥 Knocked out!';
+    ui.unlockMsg.textContent = 'You finished last and were eliminated. Try again, champ!';
+    ui.unlockMsg.classList.remove('hidden');
+    elim = null;
+    setResultButtons({ next: false });
+  } else if (elim.field.length <= 1) {
+    // Everyone else is gone: the player is the last chicken standing.
+    finishElimination();
+  } else {
+    const remaining = elim.field.length;
+    ui.gpHeading.textContent = `${knockedOut.def.name} is eliminated! ${remaining} racers left`;
+    ui.unlockMsg.classList.add('hidden');
+    setResultButtons({ next: true });
+  }
+}
+
+// The player has outlasted the whole field. Crown them with a big trophy and
+// unlock the motorbike (the tournament-tier prize).
+function finishElimination() {
+  ui.gpHeading.textContent = '🏆 Last Chicken Standing!';
+  const newly = unlocks.unlockNext('tournament');
+  ui.unlockMsg.textContent = newly
+    ? `🏍️ MOTORBIKE UNLOCKED: ${newly.name}!`
+    : 'Tournament champion! The henhouse bows to you.';
+  ui.unlockMsg.classList.remove('hidden');
+  showTrophy();
+  spawnConfetti();
+  audio.play('fanfare');
+  elim = null; // tournament over; "New tournament" starts a fresh one
+  setResultButtons({ next: false });
+}
+
+// Show this round's finishing order with the last-placed racer marked OUT.
+function renderElimStandings(sorted, knockedOut) {
+  ui.gpStandings.innerHTML = '';
+  sorted.forEach((k, i) => {
+    const li = document.createElement('li');
+    if (k.isPlayer) li.className = 'you';
+    const out = k === knockedOut;
+    li.innerHTML = `
+      <span class="gp-pos">${i + 1}</span>
+      <span class="gp-name">${k.def.name}${out ? ' ❌' : ''}</span>
+      <span class="gp-pts">${out ? 'OUT' : 'SAFE'}</span>`;
+    ui.gpStandings.appendChild(li);
+  });
+}
+
+// Pop the big trophy onto the results screen.
+function showTrophy() {
+  if (ui.trophy) ui.trophy.classList.remove('hidden');
 }
 
 // Lightweight DOM confetti for the results screen.

@@ -78,6 +78,17 @@ export const UNLOCKABLES = {
     body: 0xeaf6ff, kart: 0x2e6fb0, maxSpeed: 34, accel: 29, steer: 2.95,
     crown: true, cape: true, capeColor: 0x9fd8ff,
   },
+  // The motorbike: earned only by winning an Elimination tournament. Rides on
+  // two wheels with `vehicle: 'bike'`, leans hard into corners, and trades a
+  // little top speed for a rocket launch and razor steering. A genuinely
+  // different machine that still keeps pace with the fastest karts.
+  moto: {
+    key: 'moto', name: 'Moto Cluck', locked: true, tier: 'tournament',
+    vehicle: 'bike',
+    tagline: 'Two wheels, all guts. Rockets off the line and carves corners, but skittish at the limit.',
+    body: 0xff2d2d, kart: 0x18181c, maxSpeed: 32, accel: 30, steer: 2.9,
+    helmet: true, helmetColor: 0xff2d2d,
+  },
 };
 
 // Extra AI-only racers to fill the grid
@@ -379,7 +390,11 @@ export class Kart {
       this.driftHopT -= dt;
       m.group.position.y += Math.sin((1 - this.driftHopT / 0.28) * Math.PI) * 0.35;
     }
-    m.group.rotation.z = -this.steerVisual * 0.07 * Math.min(1, Math.abs(this.speed) / 15);
+    // Karts give a subtle body roll; the motorbike leans hard into the corner.
+    const lean = this.def.vehicle === 'bike'
+      ? this.steerVisual * 0.42
+      : -this.steerVisual * 0.07;
+    m.group.rotation.z = lean * Math.min(1, Math.abs(this.speed) / 15);
     m.group.rotation.x = this.airborne ? Math.max(-0.45, Math.min(0.45, -this.vy * 0.03)) : 0;
 
     const wheelSpin = (this.speed * dt) / 0.45;
@@ -458,13 +473,18 @@ function lambert(color) {
   return new THREE.MeshLambertMaterial({ color });
 }
 
+// Pick the right chassis for a racer. Most chickens drive a kart; the unlockable
+// Moto Cluck rides a motorbike (`def.vehicle === 'bike'`). Both share the same
+// chicken model and return the same shape, so the physics and animation code
+// downstream never has to care which one it is.
 function buildChickenKart(def) {
+  return def.vehicle === 'bike' ? buildMotorbike(def) : buildKart(def);
+}
+
+function buildKart(def) {
   const group = new THREE.Group();
   const kartMat = lambert(def.kart);
   const darkMat = lambert(0x333333);
-  const bodyMat = lambert(def.body);
-  const beakMat = lambert(0xf28c28);
-  const redMat = lambert(0xd8432f);
 
   // Kart chassis
   const chassis = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.45, 2.7), kartMat);
@@ -497,7 +517,87 @@ function buildChickenKart(def) {
   wheel.rotation.x = -0.9;
   group.add(wheel);
 
-  // The chicken
+  const { chicken, wings } = buildChicken(def);
+  const chickenBaseY = 1.15;
+  chicken.position.set(0, chickenBaseY, -0.25);
+  group.add(chicken);
+
+  return { group, wheels, wings, chicken, chickenBaseY };
+}
+
+// A sporty two-wheeler. `wheels` holds the front and rear wheels so they still
+// spin with speed, and the chicken sits astride the tank wearing a crash helmet.
+function buildMotorbike(def) {
+  const group = new THREE.Group();
+  const frameMat = lambert(def.kart);
+  const darkMat = lambert(0x222226);
+  const accentMat = lambert(def.body);
+  const chromeMat = lambert(0xb8bcc4);
+
+  // Front and rear wheels (axle along x, like the kart's, so they roll forward)
+  const wheelGeo = new THREE.CylinderGeometry(0.6, 0.6, 0.3, 16);
+  const wheels = [];
+  for (const z of [1.15, -1.15]) {
+    const w = new THREE.Mesh(wheelGeo, darkMat);
+    w.rotation.z = Math.PI / 2;
+    w.position.set(0, 0.6, z);
+    w.castShadow = true;
+    group.add(w);
+    wheels.push(w);
+  }
+
+  // Spine of the bike, plus a fuel tank and a low seat
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.3, 2.2), frameMat);
+  frame.position.set(0, 0.85, 0);
+  frame.castShadow = true;
+  group.add(frame);
+
+  const tank = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.42, 0.95), accentMat);
+  tank.position.set(0, 1.06, 0.28);
+  tank.castShadow = true;
+  group.add(tank);
+
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.2, 0.85), darkMat);
+  seat.position.set(0, 1.0, -0.6);
+  group.add(seat);
+
+  // Front fork and handlebars
+  const fork = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.05, 0.12), darkMat);
+  fork.position.set(0, 0.95, 1.12);
+  fork.rotation.x = -0.32;
+  group.add(fork);
+
+  const bars = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.1, 0.1), darkMat);
+  bars.position.set(0, 1.36, 1.02);
+  group.add(bars);
+
+  // A little nose fairing and a chrome exhaust pipe out the back
+  const fairing = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.7, 12), accentMat);
+  fairing.rotation.x = Math.PI / 2;
+  fairing.position.set(0, 1.0, 1.35);
+  group.add(fairing);
+
+  const exhaust = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.8, 8), chromeMat);
+  exhaust.rotation.x = Math.PI / 2;
+  exhaust.position.set(0.26, 0.62, -0.95);
+  group.add(exhaust);
+
+  const { chicken, wings } = buildChicken(def);
+  const chickenBaseY = 1.18;
+  chicken.position.set(0, chickenBaseY, -0.3);
+  group.add(chicken);
+
+  return { group, wheels, wings, chicken, chickenBaseY };
+}
+
+// Build the chicken that perches on any vehicle, including its hat/accessory
+// flair. Returns the group and its two wings (which the animation code flaps).
+function buildChicken(def) {
+  const darkMat = lambert(0x333333);
+  const bodyMat = lambert(def.body);
+  const beakMat = lambert(0xf28c28);
+  const redMat = lambert(0xd8432f);
+
   const chicken = new THREE.Group();
 
   const body = new THREE.Mesh(new THREE.SphereGeometry(0.55, 14, 12), bodyMat);
@@ -527,12 +627,14 @@ function buildChickenKart(def) {
   wattle.position.set(0, 0.6, 0.62);
   chicken.add(wattle);
 
-  // Comb
-  const combGeo = new THREE.SphereGeometry(0.1, 8, 6);
-  for (const [z, y] of [[0.14, 1.16], [0.0, 1.2], [-0.14, 1.14]]) {
-    const c = new THREE.Mesh(combGeo, redMat);
-    c.position.set(0, y, 0.28 + z);
-    chicken.add(c);
+  // Comb (skipped under a helmet, which covers the head instead)
+  if (!def.helmet) {
+    const combGeo = new THREE.SphereGeometry(0.1, 8, 6);
+    for (const [z, y] of [[0.14, 1.16], [0.0, 1.2], [-0.14, 1.14]]) {
+      const c = new THREE.Mesh(combGeo, redMat);
+      c.position.set(0, y, 0.28 + z);
+      chicken.add(c);
+    }
   }
 
   // Wings (pivot at the shoulder so they can flap)
@@ -617,9 +719,18 @@ function buildChickenKart(def) {
     chicken.add(band);
   }
 
-  const chickenBaseY = 1.15;
-  chicken.position.set(0, chickenBaseY, -0.25);
-  group.add(chicken);
+  // A racing crash helmet: a glossy dome over the head with a dark visor.
+  if (def.helmet) {
+    const helmetMat = lambert(def.helmetColor ?? 0xff2d2d);
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(0.44, 16, 14), helmetMat);
+    dome.scale.set(1.05, 1.08, 1.05);
+    dome.position.set(0, 0.84, 0.24);
+    dome.castShadow = true;
+    chicken.add(dome);
+    const visor = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.17, 0.16), lambert(0x101018));
+    visor.position.set(0, 0.82, 0.6);
+    chicken.add(visor);
+  }
 
-  return { group, wheels, wings, chicken, chickenBaseY };
+  return { chicken, wings };
 }

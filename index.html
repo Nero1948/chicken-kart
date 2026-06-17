@@ -31,6 +31,7 @@
       <div class="diff-btns">
         <button class="diff-btn mode-btn active" data-mode="single">Single Race</button>
         <button class="diff-btn mode-btn" data-mode="gp">Grand Prix</button>
+        <button class="diff-btn mode-btn" data-mode="elim">Elimination</button>
       </div>
     </div>
     <div id="trackSel" class="diff-group" role="group" aria-label="Track">
@@ -90,6 +91,7 @@
   <!-- Results -->
   <div id="results" class="screen hidden">
     <h2 class="screen-heading">Race results</h2>
+    <div id="trophy" class="trophy hidden" aria-hidden="true">🏆</div>
     <p id="gpHeading" class="gp-heading hidden"></p>
     <ol id="placings"></ol>
     <ul id="gpStandings" class="gp-standings hidden"></ul>
