@@ -206,6 +206,7 @@ function wireUi() {
 
   ui.playBtn.addEventListener('click', () => {
     audio.init();
+    audio.startMusic('menu');
     ui.playBtn.blur();
     renderSelectCards(); // reflect any newly unlocked racers
     ui.menu.classList.add('hidden');
@@ -244,6 +245,7 @@ function wireUi() {
     ui.select.classList.remove('hidden');
     state = 'select';
     audio.engineOff();
+    audio.startMusic('menu');
   });
 
   // Back to the home menu, where the mode, track and difficulty can be chosen.
@@ -258,6 +260,7 @@ function wireUi() {
     ui.menu.classList.remove('hidden');
     state = 'menu';
     audio.engineOff();
+    audio.startMusic('menu');
   });
 
   ui.muteBtn.textContent = audio.muted ? '🔇' : '🔊';
@@ -426,6 +429,7 @@ function startRace(key) {
   fanfarePlayed = false;
   lastPlayerRank = startRank; // where the player lines up on the grid
   state = 'racing';
+  audio.startMusic(track.id); // each track has its own race theme
   ui.results.classList.add('hidden');
   if (ui.confetti) ui.confetti.innerHTML = '';
   hud.show();
@@ -592,6 +596,7 @@ function finishGrandPrix() {
     ui.unlockMsg.textContent = msg;
     ui.unlockMsg.classList.remove('hidden');
     spawnConfetti();
+    audio.duckMusic();
     audio.play('fanfare');
   } else {
     ui.unlockMsg.classList.add('hidden');
@@ -643,6 +648,7 @@ function finishElimination() {
   ui.unlockMsg.classList.remove('hidden');
   showTrophy();
   spawnConfetti();
+  audio.duckMusic();
   audio.play('fanfare');
   elim = null; // tournament over; "New tournament" starts a fresh one
   setResultButtons({ next: false });
@@ -732,6 +738,7 @@ function animate() {
 
     if (player.finished && !fanfarePlayed) {
       fanfarePlayed = true;
+      audio.duckMusic();
       audio.play('fanfare');
     }
     if (player.finished && state === 'racing') {

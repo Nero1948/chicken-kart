@@ -1,6 +1,66 @@
 // All sound is synthesised with the Web Audio API, so there are no audio
 // files to download. The engine is a constant oscillator whose pitch follows
 // the kart's speed; everything else is short one-shot blips and noise bursts.
+// The looping background music is built the same way: a little step sequencer
+// plays short note patterns through the same tone()/noise() voices.
+
+// Note frequencies (Hz) for the music patterns. 0 is a rest.
+const NOTE = {
+  C2: 65.41, D2: 73.42, E2: 82.41, F2: 87.31, G2: 98.0, A2: 110.0, B2: 123.47,
+  C3: 130.81, D3: 146.83, E3: 164.81, F3: 174.61, G3: 196.0, A3: 220.0, B3: 246.94,
+  C4: 261.63, CS4: 277.18, D4: 293.66, E4: 329.63, F4: 349.23, FS4: 369.99, G4: 392.0,
+  GS4: 415.3, A4: 440.0, B4: 493.88,
+  C5: 523.25, CS5: 554.37, D5: 587.33, E5: 659.25, F5: 698.46, FS5: 739.99,
+  G5: 783.99, GS5: 830.61, A5: 880.0,
+};
+const _ = 0; // shorthand for a rest in the pattern arrays below
+
+// How loud the music bus sits. Kept well under the engine and sound effects so
+// it never competes with the gameplay audio.
+const MUSIC_LEVEL = 0.55;
+
+// Each theme is a looping pattern: a bass line, a lead melody and an optional
+// percussion tick, all the same length, played one step at a time. `step` is
+// the seconds per step (smaller = faster). Each track gets its own key/tempo so
+// the four circuits feel different.
+const N = NOTE;
+const THEMES = {
+  // Relaxed, friendly I-V-vi-IV in C for the menus.
+  menu: {
+    step: 0.19,
+    bass: [N.C3, _, _, _, N.G2, _, _, _, N.A2, _, _, _, N.F2, _, _, _],
+    lead: [N.E4, _, N.G4, _, N.D4, _, N.G4, _, N.C4, _, N.E4, _, N.C4, _, N.D4, _],
+    drum: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+  },
+  // Funny Farm: bouncy country hoedown in G.
+  farm: {
+    step: 0.15,
+    bass: [N.G2, _, N.D3, _, N.G2, _, N.D3, _, N.C3, _, N.G2, _, N.D3, _, N.D3, _],
+    lead: [N.G4, N.B4, N.D5, N.B4, N.G4, N.B4, N.D5, N.B4, N.E4, N.G4, N.C5, N.G4, N.FS4, N.A4, N.D5, N.A4],
+    drum: [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1],
+  },
+  // Chickens in the City: funky, driving A minor.
+  city: {
+    step: 0.14,
+    bass: [N.A2, _, N.A2, N.E3, N.A2, _, N.C3, _, N.F2, _, N.G2, _, N.A2, _, N.E3, _],
+    lead: [N.A4, _, N.C5, N.A4, N.E5, _, N.C5, N.A4, N.F4, _, N.A4, _, N.G4, N.B4, N.E5, _],
+    drum: [1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0],
+  },
+  // Tongariro Park: airy, epic D major.
+  park: {
+    step: 0.2,
+    bass: [N.D3, _, _, _, N.A2, _, _, _, N.B2, _, _, _, N.G2, _, _, _],
+    lead: [N.D5, _, N.FS5, _, N.A4, _, N.E5, _, N.B4, _, N.D5, _, N.A4, _, N.FS5, _],
+    drum: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0],
+  },
+  // Mt Maunganui Beach: bright, surfy E major.
+  beach: {
+    step: 0.16,
+    bass: [N.E3, _, N.B2, _, N.E3, _, N.B2, _, N.A2, _, N.E3, _, N.B2, _, N.B2, _],
+    lead: [N.E5, _, N.CS5, _, N.B4, _, N.GS4, _, N.E5, _, N.FS5, _, N.GS5, _, N.E5, _],
+    drum: [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0],
+  },
+};
 
 class AudioSystem {
   constructor() {
@@ -8,6 +68,8 @@ class AudioSystem {
     this.master = null;
     this.engineGain = null;
     this.engineOscs = [];
+    this.musicGain = null;
+    this.music = { timer: null, themeId: null, step: 0, nextTime: 0 };
     this.muted = localStorage.getItem('ck_muted') === '1';
   }
 
@@ -42,6 +104,12 @@ class AudioSystem {
       osc.start();
       this.engineOscs.push(osc);
     }
+
+    // Music bus: the sequencer routes every note here so the whole soundtrack
+    // can be balanced (and ducked for the victory fanfare) with one gain node.
+    this.musicGain = this.ctx.createGain();
+    this.musicGain.gain.value = MUSIC_LEVEL;
+    this.musicGain.connect(this.master);
   }
 
   setEngine(speedNorm) {
@@ -59,6 +127,74 @@ class AudioSystem {
     if (this.ctx) this.engineGain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.1);
   }
 
+  // Start (or switch to) a looping music theme. `themeId` is 'menu' or a track
+  // id ('farm' | 'city' | 'park' | 'beach'). Calling it again with the theme
+  // that is already playing is a no-op, so it is safe to call every frame.
+  startMusic(themeId) {
+    if (!this.ctx) return;
+    if (!THEMES[themeId]) themeId = 'menu';
+    if (this.music.themeId === themeId && this.music.timer) return;
+    this.stopMusic();
+    this.music.themeId = themeId;
+    this.music.step = 0;
+    this.music.nextTime = this.ctx.currentTime + 0.08;
+    if (this.musicGain) {
+      this.musicGain.gain.cancelScheduledValues(this.ctx.currentTime);
+      this.musicGain.gain.setTargetAtTime(MUSIC_LEVEL, this.ctx.currentTime, 0.1);
+    }
+    // A lookahead scheduler: a coarse timer that queues the precisely-timed
+    // notes just ahead of the clock, which keeps the rhythm rock-steady even
+    // though setInterval itself is jittery.
+    this.music.timer = setInterval(() => this._tickMusic(), 25);
+  }
+
+  stopMusic() {
+    if (this.music.timer) {
+      clearInterval(this.music.timer);
+      this.music.timer = null;
+    }
+    this.music.themeId = null;
+  }
+
+  // Briefly drop the music volume (used so the victory fanfare cuts through),
+  // then ease it back up.
+  duckMusic(dur = 1.6) {
+    if (!this.ctx || !this.musicGain) return;
+    const t = this.ctx.currentTime;
+    this.musicGain.gain.cancelScheduledValues(t);
+    this.musicGain.gain.setTargetAtTime(MUSIC_LEVEL * 0.2, t, 0.05);
+    this.musicGain.gain.setTargetAtTime(MUSIC_LEVEL, t + dur, 0.4);
+  }
+
+  _tickMusic() {
+    if (!this.ctx) return;
+    const theme = THEMES[this.music.themeId];
+    if (!theme) return;
+    const lookahead = 0.12;
+    const len = theme.bass.length;
+    while (this.music.nextTime < this.ctx.currentTime + lookahead) {
+      this._scheduleStep(theme, this.music.step, this.music.nextTime);
+      this.music.nextTime += theme.step;
+      this.music.step = (this.music.step + 1) % len;
+    }
+  }
+
+  _scheduleStep(theme, step, time) {
+    const delay = Math.max(0, time - this.ctx.currentTime);
+    const bus = this.musicGain;
+    const bass = theme.bass[step];
+    if (bass) {
+      this.tone(bass, theme.step * 3.4, { type: 'triangle', vol: 0.16, delay, bus });
+    }
+    const lead = theme.lead[step];
+    if (lead) {
+      this.tone(lead, theme.step * 0.92, { type: 'square', vol: 0.12, delay, bus });
+    }
+    if (theme.drum && theme.drum[step]) {
+      this.noise(0.04, { vol: 0.05, freq: 1900, delay, bus });
+    }
+  }
+
   toggleMute() {
     this.muted = !this.muted;
     localStorage.setItem('ck_muted', this.muted ? '1' : '0');
@@ -66,7 +202,7 @@ class AudioSystem {
     return this.muted;
   }
 
-  tone(freq, dur, { type = 'square', vol = 0.18, slide = 0, delay = 0, vibRate = 0, vibDepth = 0 } = {}) {
+  tone(freq, dur, { type = 'square', vol = 0.18, slide = 0, delay = 0, vibRate = 0, vibDepth = 0, bus = null } = {}) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime + delay;
     const osc = this.ctx.createOscillator();
@@ -90,12 +226,12 @@ class AudioSystem {
     g.gain.setValueAtTime(vol, t);
     g.gain.exponentialRampToValueAtTime(0.001, t + dur);
     osc.connect(g);
-    g.connect(this.master);
+    g.connect(bus || this.master);
     osc.start(t);
     osc.stop(t + dur + 0.02);
   }
 
-  noise(dur, { vol = 0.25, freq = 800, delay = 0 } = {}) {
+  noise(dur, { vol = 0.25, freq = 800, delay = 0, bus = null } = {}) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime + delay;
     const len = Math.floor(this.ctx.sampleRate * dur);
@@ -113,7 +249,7 @@ class AudioSystem {
     g.gain.exponentialRampToValueAtTime(0.001, t + dur);
     src.connect(filter);
     filter.connect(g);
-    g.connect(this.master);
+    g.connect(bus || this.master);
     src.start(t);
   }
 
