@@ -139,15 +139,6 @@ class AudioSystem {
         this.noise(0.5, { vol: 0.2, freq: 2500 });
         this.tone(220, 0.5, { type: 'sawtooth', vol: 0.14, slide: 660 });
         break;
-      case 'drift':
-        // a short tyre chirp as the slide begins
-        this.noise(0.12, { vol: 0.06, freq: 3200 });
-        break;
-      case 'driftboost':
-        // lighter than a full item boost: a quick rising whoosh
-        this.noise(0.28, { vol: 0.12, freq: 2400 });
-        this.tone(330, 0.3, { type: 'sawtooth', vol: 0.13, slide: 520 });
-        break;
       case 'bawk':
         // a proud cluck when you overtake a rival
         this.tone(620, 0.08, { type: 'triangle', vol: 0.15, slide: 180, vibRate: 26, vibDepth: 35 });

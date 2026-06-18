@@ -104,14 +104,6 @@ const SPIN_DURATION = 1.4;
 const BOOST_DURATION = 2.4;
 const BOOST_MULT = 1.45;
 
-// Drift / mini-turbo tuning. Hold the drift button while turning at speed to
-// slide; sparks build through two charge stages, and releasing pays out a
-// short boost whose length depends on the stage reached.
-const DRIFT_MIN_SPEED = 11;
-const DRIFT_STAGE1 = 0.55; // seconds of drift for a small (blue) boost
-const DRIFT_STAGE2 = 1.30; // seconds for a big (orange) boost
-const DRIFT_TURN = 1.5;    // how much harder the kart turns while drifting
-
 export class Kart {
   constructor(scene, def, isPlayer) {
     this.def = def;
@@ -149,13 +141,6 @@ export class Kart {
     this.wrongAccum = 0;
     this.wrongWay = false;
 
-    // Drifting (player only, but the fields live on every kart)
-    this.drifting = false;
-    this.driftDir = 0;     // -1 / +1 locked direction of the current slide
-    this.driftCharge = 0;  // seconds spent in the current drift
-    this.driftStage = 0;   // 0 none, 1 small boost ready, 2 big boost ready
-    this.driftHopT = 0;    // little hop animation when a drift begins
-    this.driftYaw = 0;     // visual slide angle of the body
     this.onGrass = false;
     this.offRoad = false;  // on grass or in the mud (used for dust puffs)
 
@@ -165,23 +150,6 @@ export class Kart {
     this.time = Math.random() * 100; // desync idle animations
   }
 
-  // End a drift and pay out the mini-turbo earned for its charge stage.
-  endDrift() {
-    const stage = this.driftStage;
-    this.cancelDrift();
-    if (stage >= 1) {
-      this.boostT = Math.max(this.boostT, stage >= 2 ? 1.0 : 0.55);
-      if (this.isPlayer) audio.play('driftboost');
-    }
-  }
-
-  // Stop drifting without any reward (used when spun out).
-  cancelDrift() {
-    this.drifting = false;
-    this.driftCharge = 0;
-    this.driftStage = 0;
-    this.driftDir = 0;
-  }
 
   forward(out) {
     return (out || new THREE.Vector3()).set(Math.sin(this.heading), 0, Math.cos(this.heading));
@@ -226,7 +194,6 @@ export class Kart {
       // Spinning out: no control, bleed speed
       this.spinT -= dt;
       this.speed *= Math.max(0, 1 - 2.2 * dt);
-      if (this.drifting) this.cancelDrift();
     } else {
       const boosting = this.boostT > 0;
       const maxS = this.def.maxSpeed * surfaceMult * (boosting ? BOOST_MULT : 1) * this.aiFactor;
@@ -241,42 +208,14 @@ export class Kart {
       if (this.speed > maxS) this.speed += (maxS - this.speed) * 4 * dt;
       this.speed = Math.max(-8, this.speed);
 
-      // Drift: hold the drift button while turning at speed to slide. The
-      // direction is locked in when the drift starts; releasing pays a boost.
-      const canDrift = !this.airborne && this.speed > DRIFT_MIN_SPEED;
-      if (input.drift && canDrift) {
-        if (!this.drifting && Math.abs(input.steer) > 0.15) {
-          this.drifting = true;
-          this.driftDir = Math.sign(input.steer);
-          this.driftCharge = 0;
-          this.driftHopT = 0.28;
-          if (this.isPlayer) audio.play('drift');
-        }
-      } else if (this.drifting) {
-        this.endDrift();
-      }
-
-      let steerInput = input.steer;
-      if (this.drifting) {
-        this.driftCharge += dt;
-        this.driftStage = this.driftCharge >= DRIFT_STAGE2 ? 2
-          : this.driftCharge >= DRIFT_STAGE1 ? 1 : 0;
-        // Bias toward the locked direction; the player can still tighten or
-        // open the line a little with the steering keys.
-        steerInput = Math.max(-1, Math.min(1, this.driftDir * 0.85 + input.steer * 0.35));
-      }
+      const steerInput = input.steer;
 
       // Steering: weak at a standstill, slightly heavier at top speed
       const grip = Math.min(1, Math.abs(this.speed) / 6) * (1 - 0.25 * Math.min(1, Math.abs(this.speed) / this.def.maxSpeed));
       const dir = this.speed < 0 ? -1 : 1;
-      const turnMult = this.drifting ? DRIFT_TURN : 1;
-      this.heading += steerInput * this.def.steer * grip * turnMult * dir * dt;
+      this.heading += steerInput * this.def.steer * grip * dir * dt;
       this.steerVisual += (steerInput - this.steerVisual) * Math.min(1, 10 * dt);
     }
-
-    // Ease the visual body slide toward the drift direction (or back to centre)
-    const yawTarget = this.drifting ? -this.driftDir * 0.5 : 0;
-    this.driftYaw += (yawTarget - this.driftYaw) * Math.min(1, 8 * dt);
 
     // Move
     this.pos.x += Math.sin(this.heading) * this.speed * dt;
@@ -383,13 +322,8 @@ export class Kart {
     if (this.spinT > 0) {
       spinOffset = (1 - this.spinT / SPIN_DURATION) * Math.PI * 4;
     }
-    m.group.rotation.y = this.heading + spinOffset + this.driftYaw;
+    m.group.rotation.y = this.heading + spinOffset;
 
-    // A quick hop as a drift kicks off
-    if (this.driftHopT > 0) {
-      this.driftHopT -= dt;
-      m.group.position.y += Math.sin((1 - this.driftHopT / 0.28) * Math.PI) * 0.35;
-    }
     // Karts give a subtle body roll; the motorbike leans hard into the corner.
     const lean = this.def.vehicle === 'bike'
       ? this.steerVisual * 0.42

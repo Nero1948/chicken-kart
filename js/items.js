@@ -21,9 +21,7 @@ export class ItemManager {
     this.llamas = [];
     this.particles = new ParticlePool(scene, 160);
     this.flashes = new FlashPool(scene, 5);
-    this.skids = new SkidPool(scene, 90);
     this.trailTimer = 0;
-    this.driftTimer = 0;
     this.dustTimer = 0;
 
     this.boxGeo = new THREE.BoxGeometry(1.5, 1.5, 1.5);
@@ -128,34 +126,16 @@ export class ItemManager {
     this.updateGroundFx(dt);
     this.particles.update(dt);
     this.flashes.update(dt);
-    this.skids.update(dt);
   }
 
-  // Drift sparks, tyre marks and off-road dust for every kart.
+  // Off-road dust for every kart.
   updateGroundFx(dt) {
-    this.driftTimer -= dt;
-    const sparkTick = this.driftTimer <= 0;
-    if (sparkTick) this.driftTimer = 0.03;
     this.dustTimer -= dt;
     const dustTick = this.dustTimer <= 0;
     if (dustTick) this.dustTimer = 0.05;
 
     for (const kart of this.karts) {
       const f = kart.forward();
-      if (kart.drifting && sparkTick) {
-        // Sparks at both rear corners, colour rising with the charge stage
-        const colour = kart.driftStage >= 2 ? 0xff7a1a : kart.driftStage >= 1 ? 0x4ab8ff : 0xfff0a0;
-        for (const side of [-1, 1]) {
-          const rx = Math.cos(kart.heading) * side * 0.8;
-          const rz = -Math.sin(kart.heading) * side * 0.8;
-          const p = { x: kart.pos.x - f.x * 1.4 + rx, y: kart.pos.y + 0.4, z: kart.pos.z - f.z * 1.4 + rz };
-          this.particles.burst(p, 1, {
-            color: colour, speed: kart.driftStage >= 1 ? 3 : 1.5, up: 2,
-            size: kart.driftStage >= 2 ? 0.28 : 0.2, life: 0.3,
-          });
-        }
-        this.skids.drop(kart.pos.x - f.x * 1.4, kart.pos.y, kart.pos.z - f.z * 1.4);
-      }
       // Dust scrabbling over grass or mud at speed
       if (kart.offRoad && Math.abs(kart.speed) > 9 && dustTick) {
         const p = { x: kart.pos.x - f.x * 1.3, y: kart.pos.y + 0.3, z: kart.pos.z - f.z * 1.3 };
@@ -422,7 +402,6 @@ export class ItemManager {
     this.specialMat.dispose();
     this.particles.dispose();
     this.flashes.dispose();
-    this.skids.dispose();
   }
 }
 
@@ -592,58 +571,6 @@ class FlashPool {
     for (const f of this.items) {
       this.scene.remove(f.mesh);
       f.mesh.material.dispose();
-    }
-    this.geo.dispose();
-  }
-}
-
-// Flat dark scuff marks laid on the ground while drifting; they fade out.
-class SkidPool {
-  constructor(scene, count) {
-    this.scene = scene;
-    this.items = [];
-    this.geo = new THREE.PlaneGeometry(0.7, 0.7);
-    for (let i = 0; i < count; i++) {
-      const mat = new THREE.MeshBasicMaterial({
-        color: 0x111111, transparent: true, opacity: 0, depthWrite: false,
-      });
-      const mesh = new THREE.Mesh(this.geo, mat);
-      mesh.rotation.x = -Math.PI / 2; // lie flat on the ground
-      mesh.visible = false;
-      scene.add(mesh);
-      this.items.push({ mesh, life: 0, maxLife: 1.8, active: false });
-    }
-    this.next = 0;
-  }
-
-  drop(x, y, z) {
-    const s = this.items[this.next];
-    this.next = (this.next + 1) % this.items.length;
-    s.active = true;
-    s.life = s.maxLife;
-    s.mesh.visible = true;
-    s.mesh.position.set(x, y + 0.06, z);
-    s.mesh.scale.setScalar(0.8 + Math.random() * 0.5);
-    s.mesh.material.opacity = 0.4;
-  }
-
-  update(dt) {
-    for (const s of this.items) {
-      if (!s.active) continue;
-      s.life -= dt;
-      if (s.life <= 0) {
-        s.active = false;
-        s.mesh.visible = false;
-        continue;
-      }
-      s.mesh.material.opacity = 0.4 * (s.life / s.maxLife);
-    }
-  }
-
-  dispose() {
-    for (const s of this.items) {
-      this.scene.remove(s.mesh);
-      s.mesh.material.dispose();
     }
     this.geo.dispose();
   }
