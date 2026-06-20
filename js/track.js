@@ -1779,29 +1779,54 @@ function computeBeachJumps() {
   });
 }
 
-// The sea: a big water plane covering the whole seaward (east) side. It sits
-// slightly below ground so the sand reads as the beach sloping into the water.
+// The sea: the open water running the whole length of the seaward (east, +x)
+// side, matching the real Mt Maunganui beach with the surf along one side. It
+// sits just past the track's seaward boundary (x = SEA_EDGE = 150, while the
+// racing line never reaches past ~142) so it never covers the drivable sand.
+//
+// Built as a few parallel bands stepping from a pale turquoise shallows at the
+// waterline out to a deep navy on the horizon, so the sea reads with depth even
+// though each band is a flat coloured plane (a flat plane is fine here; nothing
+// in the codebase animates materials).
 function buildBeachOcean(group) {
-  const water = new THREE.Mesh(
+  // Far deep water: one big plane behind everything so there are no gaps.
+  const deep = new THREE.Mesh(
     new THREE.PlaneGeometry(1600, 1600),
-    new THREE.MeshLambertMaterial({ color: 0x2f6f9c })
+    lambert(0x215a86)
   );
-  water.rotation.x = -Math.PI / 2;
-  water.position.set(SEA_EDGE + 800, -0.6, 0); // its near edge sits at x = SEA_EDGE
-  group.add(water);
+  deep.rotation.x = -Math.PI / 2;
+  deep.position.set(SEA_EDGE + 800, -0.7, 0); // near edge at x = SEA_EDGE
+  group.add(deep);
+
+  // Mid water and shallows: progressively lighter bands stepping in toward shore.
+  const bands = [
+    { from: SEA_EDGE, width: 120, colour: 0x2f7fa8, y: -0.45 }, // mid
+    { from: SEA_EDGE, width: 34,  colour: 0x57a7c4, y: -0.25 }, // inner
+    { from: SEA_EDGE, width: 12,  colour: 0x8fcbd9, y: -0.08 }, // shallows
+  ];
+  for (const b of bands) {
+    const plane = new THREE.Mesh(new THREE.PlaneGeometry(b.width, 1400), lambert(b.colour));
+    plane.rotation.x = -Math.PI / 2;
+    plane.position.set(b.from + b.width / 2, b.y, 0);
+    group.add(plane);
+  }
 
   // A foamy wet-sand strip right along the waterline for contrast.
-  const foam = new THREE.Mesh(new THREE.PlaneGeometry(6, 1200), lambert(0xeae0c8));
+  const foam = new THREE.Mesh(new THREE.PlaneGeometry(5, 1300), lambert(0xeae0c8));
   foam.rotation.x = -Math.PI / 2;
-  foam.position.set(SEA_EDGE - 2, 0.0, 0);
+  foam.position.set(SEA_EDGE - 2.5, 0.0, 0);
   group.add(foam);
 }
 
-// Warm dry sand for the beach ground (the inland half of the world).
+// Warm dry sand for the beach ground (the inland half of the world). It stops
+// at the shoreline (x = SEA_EDGE) so it never sits on top of and hide the sea;
+// everything seaward of that line is open water.
 function buildBeachGround(group) {
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(1500, 1500), lambert(0xd6c08a));
+  const W = 1500;
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(W, 1500), lambert(0xd6c08a));
   ground.rotation.x = -Math.PI / 2;
-  ground.position.set(-200, -0.02, 0); // pushed inland so it does not cover the sea
+  // Seaward edge sits exactly on the waterline; the rest stretches inland (-x).
+  ground.position.set(SEA_EDGE - W / 2, -0.02, 0);
   ground.receiveShadow = true;
   group.add(ground);
 }
@@ -1829,19 +1854,26 @@ function buildMauao(group) {
   group.add(g);
 }
 
-// Sand dunes on the inland (west, seaward-negative) side: raised sandy mounds,
-// the ones on the jump straight doubling as the ramp support berms.
+// Sand dunes. Two kinds:
+//   1. Bumpable trackside dunes: low sandy mounds that creep onto the edge of
+//      the racing line. Driving over one slows the kart (a soft sand slow zone
+//      added to track.mud, reusing the same slowdown the farm's mud uses). They
+//      are placed hard against ONE road edge at a time, alternating sides, with
+//      a wide clear corridor down the other side so the racing line is never
+//      blocked. See buildBumpDunes() below for the spacing maths.
+//   2. Scenic dunes: big mounds and a low ridge set well inland, decoration only.
 function buildDunes(group) {
   const sand = lambert(0xcdb87f);
   const marram = lambert(0x9fae5a); // dune grass tint on the larger mounds
 
-  // Big scenic dune mounds dotted along the inland edge of the loop.
+  buildBumpDunes(group, sand, marram);
+
+  // Big scenic dune mounds dotted along the inland edge of the loop (decoration).
   const spots = [
-    { f: 0.16, lat: -16, r: 7, h: 4 },
-    { f: 0.46, lat: -18, r: 9, h: 5 },
-    { f: 0.55, lat: -15, r: 6, h: 3.5 },
-    { f: 0.78, lat: -17, r: 8, h: 4.5 },
-    { f: 0.90, lat: -16, r: 7, h: 4 },
+    { f: 0.16, lat: -22, r: 7, h: 4 },
+    { f: 0.46, lat: -24, r: 9, h: 5 },
+    { f: 0.55, lat: -21, r: 6, h: 3.5 },
+    { f: 0.90, lat: -22, r: 7, h: 4 },
   ];
   for (const sp of spots) {
     const idx = Math.floor(sp.f * N);
@@ -1881,34 +1913,121 @@ function buildDunes(group) {
   }
 }
 
-// Build the dune jump ramps: a chevron caution lip plank at each take-off,
-// flanked by sandy support berms, sitting on the road that rises to meet it.
+// Bumpable trackside sand dunes that slow the kart (a soft-sand slow zone, the
+// same mechanic the farm mud uses via inMud -> surfaceMult). Each dune hugs one
+// road edge so a kart can always sail past on the open side.
+//
+// Spacing maths (roadHalf = 6.5, limit = 11.5):
+//   - A dune sits centred at lateral LAT = roadHalf + 0.5 = 7.0 on its side.
+//   - Its slow-zone radius is MUD_R = 4.0, so the slow zone reaches inward to
+//     LAT - MUD_R = 3.0 from the centre line on that side.
+//   - That leaves a clear corridor from the opposite fence (-11.5) up to +3.0
+//     on the dune's side: ~14.5 m of open track, far wider than a kart, so the
+//     racing line is never blocked.
+//   - Successive dunes alternate sides and sit >= ~0.08*N (~44 samples) apart,
+//     so two dunes never pinch the same stretch from both sides at once.
+function buildBumpDunes(group, sand, marram) {
+  const MUD_R = 4.0;          // soft-sand slow radius
+  const LAT = track.roadHalf + 0.5; // dune centre just off the road edge (7.0)
+  // f = lap fraction, s = +1 (right of travel) or -1 (left of travel).
+  // Sides alternate and gaps are wide; all kept off the jump straight (~0.56-0.72).
+  const spots = [
+    { f: 0.10, s: 1 },
+    { f: 0.19, s: -1 },
+    { f: 0.29, s: 1 },
+    { f: 0.38, s: -1 },
+    { f: 0.48, s: 1 },
+    { f: 0.80, s: -1 },
+    { f: 0.88, s: 1 },
+    { f: 0.95, s: -1 },
+  ];
+  for (const sp of spots) {
+    const idx = Math.floor(sp.f * N);
+    // Never let a dune creep onto a jump take-off.
+    if (track.jumps.some((jp) => idxInRange(idx, jp.startIdx - 4, jp.lipIdx + 4))) continue;
+    const s = track.samples[idx];
+    const p = latPoint(s, LAT * sp.s);
+    const r = 3.6;            // visible mound radius (a touch under the slow radius)
+    const h = 2.6;            // mound height
+    const dune = new THREE.Mesh(
+      new THREE.SphereGeometry(r, 16, 9, 0, Math.PI * 2, 0, Math.PI / 2), sand
+    );
+    dune.scale.set(1.5, h / r, 1.1);
+    dune.position.set(p.x, -0.15, p.z);
+    dune.rotation.y = Math.atan2(s.tan.x, s.tan.z);
+    dune.castShadow = true;
+    dune.receiveShadow = true;
+    group.add(dune);
+
+    // A marram-grass cap so the bumpable dunes read clearly as obstacles.
+    const cap = new THREE.Mesh(
+      new THREE.SphereGeometry(r * 0.55, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2), marram
+    );
+    cap.scale.set(1.3, (h * 0.45) / (r * 0.55), 1.0);
+    cap.position.set(p.x, h * 0.4 - 0.15, p.z);
+    group.add(cap);
+
+    // The slow zone: reuse track.mud so inMud() catches it and the kart bogs
+    // down in soft sand exactly like the farm mud puddle.
+    track.mud.push({ pos: new THREE.Vector3(p.x, 0, p.z), r: MUD_R });
+  }
+}
+
+// Build the dune jump ramps as proper sloped ramps: a wooden wedge deck that
+// climbs from ground level up to a raised take-off lip (matching the road that
+// already rises to meet it via surfaceY), with sandy support walls down each
+// side and a chevron caution plank at the lip. The launch itself is handled by
+// the shared jump machinery (surfaceY rise + atRampLip), so this is purely the
+// ramp's look — but now it reads as an actual sloped incline, not a flat plank.
 function buildBeachJumps(parent) {
   const g = new THREE.Group();
   const sand = lambert(0xcdb87f);
+  const plank = lambert(0xb98a4e); // weathered timber ramp deck
   for (const jp of track.jumps) {
+    const idxs = rangeIndices(jp.startIdx, jp.lipIdx);
+
+    // The sloped ramp deck: a slab that follows the road's rise from the foot of
+    // the ramp up to the lip, so it visibly inclines toward the take-off. Lifted
+    // a touch above the road so it reads as a ramp laid over the sand.
+    buildSloped(g, idxs, -track.roadHalf, track.roadHalf,
+      (idx) => surfaceY(idx, 0) + 0.05, plank, true);
+
     const lipS = track.samples[jp.lipIdx];
     const lp = latPoint(lipS, 0);
     lp.y = surfaceY(jp.lipIdx, 0);
 
+    // Chevron caution plank standing proud at the very lip of the ramp.
     const lip = new THREE.Mesh(
-      new THREE.BoxGeometry(track.roadHalf * 2, 0.45, 1.0),
+      new THREE.BoxGeometry(track.roadHalf * 2, 0.5, 0.9),
       makeChevronMaterial()
     );
     lip.position.copy(lp);
-    lip.position.y += 0.18;
-    lip.lookAt(lp.x + lipS.tan.x, lp.y + 0.18, lp.z + lipS.tan.z);
+    lip.position.y += 0.25;
+    lip.lookAt(lp.x + lipS.tan.x, lp.y + 0.25, lp.z + lipS.tan.z);
     lip.castShadow = true;
     g.add(lip);
 
-    // Sandy berms either side of the take-off shaping the ramp.
+    // Sandy triangular support walls down each side of the ramp, rising with the
+    // deck so the wedge shape (low at the foot, full height at the lip) is clear.
     for (const side of [-1, 1]) {
-      const bp = latPoint(lipS, side * (track.roadHalf + 0.9));
-      bp.y = surfaceY(jp.lipIdx, 0) * 0.5;
-      const mound = new THREE.Mesh(new THREE.ConeGeometry(2.0, jp.height + 1.2, 8), sand);
-      mound.position.set(bp.x, bp.y, bp.z);
-      mound.castShadow = true;
-      g.add(mound);
+      const footS = track.samples[jp.startIdx];
+      const foot = latPoint(footS, side * (track.roadHalf + 0.5)); // y = 0
+      const top = latPoint(lipS, side * (track.roadHalf + 0.5));    // y = 0
+      const lipY = surfaceY(jp.lipIdx, 0);
+      // Horizontal run (ground distance) and full lip height give a right-angle
+      // wedge: flat foot, vertical face under the lip, sloped hypotenuse on top.
+      const run = Math.hypot(top.x - foot.x, top.z - foot.z);
+      const shape = new THREE.Shape();
+      shape.moveTo(0, 0);
+      shape.lineTo(run, 0);
+      shape.lineTo(run, lipY + 0.3);
+      shape.closePath();
+      const wallGeo = new THREE.ExtrudeGeometry(shape, { depth: 0.5, bevelEnabled: false });
+      const wall = new THREE.Mesh(wallGeo, sand);
+      wall.position.set(foot.x, 0, foot.z);
+      wall.rotation.y = -Math.atan2(top.z - foot.z, top.x - foot.x);
+      wall.castShadow = true;
+      g.add(wall);
     }
   }
   parent.add(g);

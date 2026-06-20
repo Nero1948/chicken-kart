@@ -1,5 +1,25 @@
 /* Chicken Kart UI styles */
 
+:root {
+  /* Brand palette */
+  --cream: #fff7e6;
+  --ink: #1f2430;
+  --orange: #ff8a1e;
+  --orange-deep: #b3541e;
+  --yellow: #ffc21e;
+  --red: #e23b3b;
+
+  /* Shared frosted panel */
+  --panel-bg: rgba(20, 26, 38, 0.62);
+  --panel-border: rgba(255, 255, 255, 0.14);
+  --panel-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+  --panel-blur: blur(10px);
+  --radius: 22px;
+
+  /* Reusable checkered-flag accent (set background-size to taste) */
+  --checker: conic-gradient(var(--ink) 90deg, #fff 90deg 180deg, var(--ink) 180deg 270deg, #fff 270deg);
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body {
@@ -37,8 +57,8 @@ html, body {
 }
 
 #select, #results {
-  background: rgba(20, 40, 25, 0.55);
-  backdrop-filter: blur(3px);
+  background: rgba(12, 16, 26, 0.6);
+  backdrop-filter: blur(4px);
   /* Centre the content when it fits, but allow scrolling when it is taller
      than the screen (e.g. a full Grand Prix standings list) without clipping
      the top. The flexible spacers collapse once the content overflows. */
@@ -49,53 +69,203 @@ html, body {
 #select::before, #select::after,
 #results::before, #results::after { content: ''; flex: 1 0 8px; }
 
-.title {
-  font-size: clamp(56px, 12vw, 120px);
-  font-weight: 800;
-  line-height: 0.95;
-  color: #fff;
-  -webkit-text-stroke: 3px #b3541e;
-  text-shadow: 0 6px 0 #b3541e, 0 12px 24px rgba(0,0,0,0.35);
-  animation: bob 2.4s ease-in-out infinite;
-}
-
 @keyframes bob {
   0%, 100% { transform: translateY(0) rotate(-1.5deg); }
   50% { transform: translateY(-12px) rotate(1.5deg); }
 }
 
+/* ---------- Home menu: vignette, layout, logo lockup ---------- */
+
+/* Soft vignette so the menu reads clearly over the bright 3D sky. Sits behind
+   the menu UI but above the game canvas. */
+#menu::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 32%, rgba(8, 12, 20, 0.6) 100%);
+}
+
+/* Centre the menu when it fits, but fall back to top-aligned scrolling when the
+   content is taller than the screen (small phones) so the logo and Play button
+   are never clipped. Auto margins avoid the flex `justify-content: center`
+   clipping bug; the fixed vignette pseudo-element stays out of the flex flow. */
+#menu {
+  justify-content: flex-start;
+  gap: 24px;
+  overflow-y: auto;
+}
+#menu .menu-inner { margin-top: auto; }
+#menu .controls-hint { margin-bottom: auto; }
+
+/* Mobile-first: single stacked column. Two columns on wider screens. */
+.menu-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+  width: 100%;
+  max-width: 1040px;
+}
+
+@media (min-width: 820px) {
+  .menu-inner {
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    gap: 52px;
+  }
+  .menu-hero { flex: 0 1 420px; }
+  .menu-panel { flex: 0 1 470px; }
+}
+
+.menu-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.logo-emblem {
+  width: clamp(116px, 26vw, 188px);
+  height: auto;
+  filter: drop-shadow(0 12px 18px rgba(0, 0, 0, 0.42));
+  animation: bob 3s ease-in-out infinite;
+}
+
+.wordmark {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 0.84;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.wordmark span {
+  -webkit-text-stroke: 3px var(--ink);
+  paint-order: stroke fill;
+  text-shadow: 0 5px 0 var(--ink), 0 11px 18px rgba(0, 0, 0, 0.4);
+}
+
+.wordmark .w-1 {
+  font-size: clamp(38px, 8.5vw, 70px);
+  color: #ffe9c2;
+  letter-spacing: 1px;
+}
+
+.wordmark .w-2 {
+  font-size: clamp(50px, 11vw, 92px);
+  color: var(--orange);
+  letter-spacing: 3px;
+}
+
+/* Skewed checkered-flag accent under the wordmark */
+.checker-strip {
+  width: min(260px, 64%);
+  height: 16px;
+  border: 2px solid var(--ink);
+  border-radius: 5px;
+  background-image: var(--checker);
+  background-size: 16px 16px;
+  transform: skewX(-14deg) rotate(-1.5deg);
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.3);
+  margin-top: 2px;
+}
+
 .subtitle {
-  font-size: clamp(18px, 3vw, 28px);
+  font-size: clamp(18px, 3vw, 26px);
   font-weight: 700;
-  color: #fff7e0;
-  text-shadow: 0 2px 6px rgba(0,0,0,0.4);
+  letter-spacing: 1px;
+  color: var(--cream);
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+  margin-top: 4px;
+}
+
+/* Frosted control panel holding the selectors and Play button */
+.menu-panel {
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 24px 22px 26px;
+  background: var(--panel-bg);
+  -webkit-backdrop-filter: var(--panel-blur);
+  backdrop-filter: var(--panel-blur);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius);
+  box-shadow: var(--panel-shadow);
 }
 
 .screen-heading {
+  position: relative;
   font-size: clamp(28px, 5vw, 48px);
   font-weight: 800;
   color: #fff;
   text-shadow: 0 3px 0 rgba(0,0,0,0.3);
+  padding-bottom: 16px;
+}
+
+/* Checkered-flag underline ties the heading to the brand */
+.screen-heading::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  width: clamp(100px, 24vw, 150px);
+  height: 10px;
+  background-image: var(--checker);
+  background-size: 10px 10px;
+  border: 1.5px solid var(--ink);
+  border-radius: 4px;
 }
 
 .big-btn {
   font-family: inherit;
   font-size: clamp(20px, 3.5vw, 32px);
   font-weight: 800;
+  letter-spacing: 1px;
   padding: 14px 52px;
   border: none;
   border-radius: 999px;
-  background: #ffb300;
+  background: linear-gradient(#ffce3d, #ff9a14);
   color: #5a3000;
   cursor: pointer;
-  box-shadow: 0 6px 0 #c77f00, 0 12px 20px rgba(0,0,0,0.25);
+  box-shadow: 0 6px 0 var(--orange-deep), 0 12px 22px rgba(0,0,0,0.3),
+              inset 0 2px 0 rgba(255,255,255,0.6);
   transition: transform 0.1s, box-shadow 0.1s;
 }
 
 .big-btn:hover { transform: translateY(-2px) scale(1.04); }
-.big-btn:active { transform: translateY(3px); box-shadow: 0 2px 0 #c77f00; }
-.big-btn.alt { background: #e8e8e8; color: #444; box-shadow: 0 6px 0 #a8a8a8, 0 12px 20px rgba(0,0,0,0.25); }
-.big-btn.alt:active { box-shadow: 0 2px 0 #a8a8a8; }
+.big-btn:active { transform: translateY(3px); box-shadow: 0 2px 0 var(--orange-deep), inset 0 2px 0 rgba(255,255,255,0.6); }
+.big-btn.alt { background: linear-gradient(#f4f4f4, #e2e2e2); color: #444; box-shadow: 0 6px 0 #a8a8a8, 0 12px 20px rgba(0,0,0,0.25), inset 0 2px 0 rgba(255,255,255,0.7); }
+.big-btn.alt:active { box-shadow: 0 2px 0 #a8a8a8, inset 0 2px 0 rgba(255,255,255,0.7); }
+
+/* Checkered-flag edges on the main Play button for a racy lift */
+#playBtn {
+  position: relative;
+  overflow: hidden;
+  padding-left: 64px;
+  padding-right: 64px;
+}
+
+#playBtn::before, #playBtn::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 20px;
+  background-image: var(--checker);
+  background-size: 10px 10px;
+  opacity: 0.9;
+}
+
+#playBtn::before { left: 0; }
+#playBtn::after { right: 0; }
 
 .btn-row { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; }
 
@@ -132,9 +302,10 @@ html, body {
   flex-wrap: wrap;
   justify-content: center;
   max-width: min(92vw, 560px);
-  gap: 8px;
-  background: rgba(0,0,0,0.3);
-  padding: 6px;
+  gap: 6px;
+  background: rgba(0,0,0,0.32);
+  border: 1px solid rgba(255,255,255,0.1);
+  padding: 5px;
   border-radius: 999px;
 }
 
@@ -154,9 +325,9 @@ html, body {
 .diff-btn:hover { transform: scale(1.05); }
 
 .diff-btn.active {
-  background: #ffb300;
+  background: linear-gradient(#ffce3d, #ff9a14);
   color: #5a3000;
-  box-shadow: 0 3px 0 #c77f00;
+  box-shadow: 0 3px 0 var(--orange-deep), inset 0 1px 0 rgba(255,255,255,0.55);
 }
 
 /* Track selector reuses the difficulty pill styling but allows two longer
@@ -167,10 +338,11 @@ html, body {
 /* ---------- Fastest-lap board (main menu) ---------- */
 
 .lap-board {
-  background: rgba(0,0,0,0.32);
-  border-radius: 18px;
-  padding: 12px 22px 14px;
-  min-width: min(360px, 86vw);
+  width: 100%;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 16px;
+  padding: 12px 20px 14px;
 }
 
 .board-title {
@@ -209,20 +381,35 @@ html, body {
 }
 
 .card {
+  position: relative;
+  overflow: hidden;
   width: 230px;
   background: #fffdf5;
   border-radius: 22px;
-  padding: 18px 18px 22px;
+  padding: 24px 18px 22px;
   cursor: pointer;
   border: 4px solid transparent;
-  box-shadow: 0 10px 24px rgba(0,0,0,0.3);
+  box-shadow: 0 12px 26px rgba(0,0,0,0.32);
   transition: transform 0.12s, border-color 0.12s;
   text-align: center;
 }
 
+/* Checkered race-stripe across the top of each racer card */
+.card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 9px;
+  background-image: var(--checker);
+  background-size: 9px 9px;
+  opacity: 0.92;
+}
+
 .card:hover {
   transform: translateY(-8px) scale(1.03);
-  border-color: #ffb300;
+  border-color: var(--orange);
 }
 
 .card-face {
@@ -277,23 +464,30 @@ html, body {
   text-shadow: 0 4px 0 #2a5a18, 0 8px 16px rgba(0,0,0,0.3);
 }
 
-#lap {
-  top: clamp(70px, 10vw, 96px);
-  left: 24px;
-  font-size: clamp(18px, 2.5vw, 26px);
-  font-weight: 700;
+/* Shared HUD chip backplate */
+#lap, #lapInfo {
+  left: 22px;
+  background: rgba(20, 26, 38, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  padding: 6px 14px;
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
   color: #fff;
   text-shadow: 0 2px 4px rgba(0,0,0,0.5);
 }
 
+#lap {
+  top: clamp(74px, 10vw, 98px);
+  font-size: clamp(18px, 2.5vw, 26px);
+  font-weight: 700;
+}
+
 #lapInfo {
-  top: clamp(104px, 14.5vw, 138px);
-  left: 24px;
+  top: clamp(120px, 15.5vw, 150px);
   display: flex;
   flex-direction: column;
   gap: 1px;
-  color: #fff;
-  text-shadow: 0 2px 4px rgba(0,0,0,0.5);
 }
 
 #lapTime {
@@ -317,21 +511,23 @@ html, body {
   width: 84px;
   height: 84px;
   border-radius: 20px;
-  background: rgba(255,255,255,0.25);
-  border: 4px solid rgba(255,255,255,0.7);
+  background: rgba(20, 26, 38, 0.4);
+  border: 3px solid rgba(255,255,255,0.75);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 46px;
-  box-shadow: 0 6px 14px rgba(0,0,0,0.25);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  box-shadow: 0 6px 14px rgba(0,0,0,0.3);
 }
 
 #minimap {
   bottom: 18px;
   right: 18px;
-  background: rgba(0, 0, 0, 0.30);
+  background: rgba(20, 26, 38, 0.4);
   border-radius: 16px;
-  border: 3px solid rgba(255,255,255,0.5);
+  border: 3px solid rgba(255,255,255,0.6);
 }
 
 #wrongway {
@@ -418,6 +614,7 @@ html, body {
 /* ---------- Locked character cards ---------- */
 
 .card.locked { cursor: default; opacity: 0.9; background: #ece6da; }
+.card.locked::before { opacity: 0.3; filter: grayscale(1); }
 .card.locked:hover { transform: none; border-color: transparent; }
 .locked-face {
   background: #d9d2c4;

@@ -15,7 +15,7 @@ export const CHARACTERS = {
     maxSpeed: 30, accel: 24, steer: 2.4,
   },
   heyhey: {
-    key: 'heyhey', name: 'Heyhey',
+    key: 'heyhey', name: 'HeiHei',
     tagline: 'Blistering top speed, but slow off the line and turns like a bus.',
     body: 0xffffff, kart: 0xd93636,
     maxSpeed: 36, accel: 17, steer: 1.95, sunglasses: true,

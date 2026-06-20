@@ -6,7 +6,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <title>Chicken Kart</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐔</text></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='15' fill='%23ff8a1e'/><circle cx='28' cy='36' r='17' fill='%23fffdf5' stroke='%231f2430' stroke-width='3'/><circle cx='21' cy='20' r='5' fill='%23e23b3b'/><circle cx='29' cy='17' r='5.5' fill='%23e23b3b'/><circle cx='37' cy='20' r='5' fill='%23e23b3b'/><path d='M44 33 L57 37 L44 42 Z' fill='%23ffae2e' stroke='%231f2430' stroke-width='2.4' stroke-linejoin='round'/><ellipse cx='46' cy='46' rx='4' ry='6' fill='%23e23b3b'/><circle cx='31' cy='32' r='3.4' fill='%231f2430'/><circle cx='32.2' cy='30.8' r='1.1' fill='%23fff'/></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&display=swap" rel="stylesheet">
@@ -24,39 +24,69 @@
 
   <!-- Main menu -->
   <div id="menu" class="screen">
-    <h1 class="title">CHICKEN<br>KART</h1>
-    <p class="subtitle">Bawk to the floor!</p>
-    <div id="modeSel" class="diff-group" role="group" aria-label="Mode">
-      <span class="diff-label">Mode</span>
-      <div class="diff-btns">
-        <button class="diff-btn mode-btn active" data-mode="single">Single Race</button>
-        <button class="diff-btn mode-btn" data-mode="gp">Grand Prix</button>
-        <button class="diff-btn mode-btn" data-mode="elim">Elimination</button>
+    <div class="menu-inner">
+      <!-- Logo lockup: SVG chicken-head emblem + chunky wordmark -->
+      <div class="menu-hero">
+        <svg class="logo-emblem" viewBox="0 0 120 120" role="img" aria-label="Chicken Kart">
+          <circle cx="60" cy="60" r="57" fill="#ff8a1e"/>
+          <circle cx="60" cy="60" r="57" fill="none" stroke="#1f2430" stroke-width="6"/>
+          <circle cx="60" cy="60" r="45" fill="#bfe4ff"/>
+          <!-- comb (drawn first so the head connects over its base) -->
+          <circle cx="42" cy="36" r="8" fill="#e23b3b" stroke="#1f2430" stroke-width="3"/>
+          <circle cx="54" cy="30" r="9" fill="#e23b3b" stroke="#1f2430" stroke-width="3"/>
+          <circle cx="66" cy="36" r="8" fill="#e23b3b" stroke="#1f2430" stroke-width="3"/>
+          <!-- head -->
+          <circle cx="54" cy="64" r="27" fill="#fffdf5" stroke="#1f2430" stroke-width="3.5"/>
+          <!-- beak -->
+          <path d="M79 60 L97 65 L79 73 Z" fill="#ffae2e" stroke="#1f2430" stroke-width="3" stroke-linejoin="round"/>
+          <!-- wattle -->
+          <ellipse cx="82" cy="78" rx="5.5" ry="9" fill="#e23b3b" stroke="#1f2430" stroke-width="3"/>
+          <!-- cheek + eye -->
+          <circle cx="46" cy="72" r="5" fill="#ffc6c6"/>
+          <circle cx="58" cy="58" r="5.5" fill="#1f2430"/>
+          <circle cx="60" cy="56" r="1.8" fill="#fff"/>
+        </svg>
+        <h1 class="wordmark"><span class="w-1">CHICKEN</span><span class="w-2">KART</span></h1>
+        <div class="checker-strip" aria-hidden="true"></div>
+        <p class="subtitle">Bawk. Race. Win.</p>
+      </div>
+
+      <!-- Menu panel: mode / track / difficulty / play -->
+      <div class="menu-panel">
+        <div id="modeSel" class="diff-group" role="group" aria-label="Mode">
+          <span class="diff-label">Mode</span>
+          <div class="diff-btns">
+            <button class="diff-btn mode-btn active" data-mode="single">Single Race</button>
+            <button class="diff-btn mode-btn" data-mode="gp">Grand Prix</button>
+            <button class="diff-btn mode-btn" data-mode="elim">Elimination</button>
+          </div>
+        </div>
+        <div id="trackSel" class="diff-group" role="group" aria-label="Track">
+          <span class="diff-label">Track</span>
+          <div class="diff-btns track-btns">
+            <button class="diff-btn track-btn active" data-track="farm">Funny Farm</button>
+            <button class="diff-btn track-btn" data-track="city">Chickens in the City</button>
+            <button class="diff-btn track-btn" data-track="park">Tongariro Park</button>
+            <button class="diff-btn track-btn" data-track="beach">Mt Maunganui Beach</button>
+          </div>
+        </div>
+        <div id="difficulty" class="diff-group" role="group" aria-label="Difficulty">
+          <span class="diff-label">Difficulty</span>
+          <div class="diff-btns">
+            <button class="diff-btn" data-diff="easy">Easy</button>
+            <button class="diff-btn active" data-diff="medium">Medium</button>
+            <button class="diff-btn" data-diff="hard">Hard</button>
+            <button class="diff-btn" data-diff="extreme">Extreme</button>
+          </div>
+        </div>
+        <button id="playBtn" class="big-btn">PLAY</button>
+        <div id="lapBoard" class="lap-board">
+          <span class="board-title">🏁 Fastest Laps</span>
+          <ul id="lapBoardList"></ul>
+        </div>
       </div>
     </div>
-    <div id="trackSel" class="diff-group" role="group" aria-label="Track">
-      <span class="diff-label">Track</span>
-      <div class="diff-btns track-btns">
-        <button class="diff-btn track-btn active" data-track="farm">Funny Farm</button>
-        <button class="diff-btn track-btn" data-track="city">Chickens in the City</button>
-        <button class="diff-btn track-btn" data-track="park">Tongariro Park</button>
-        <button class="diff-btn track-btn" data-track="beach">Mt Maunganui Beach</button>
-      </div>
-    </div>
-    <div id="difficulty" class="diff-group" role="group" aria-label="Difficulty">
-      <span class="diff-label">Difficulty</span>
-      <div class="diff-btns">
-        <button class="diff-btn" data-diff="easy">Easy</button>
-        <button class="diff-btn active" data-diff="medium">Medium</button>
-        <button class="diff-btn" data-diff="hard">Hard</button>
-        <button class="diff-btn" data-diff="extreme">Extreme</button>
-      </div>
-    </div>
-    <button id="playBtn" class="big-btn">PLAY</button>
-    <div id="lapBoard" class="lap-board">
-      <span class="board-title">🏁 Fastest Laps</span>
-      <ul id="lapBoardList"></ul>
-    </div>
+
     <div class="controls-hint">
       <span><b>Arrows / WASD</b> drive</span>
       <span><b>Space</b> use item</span>
