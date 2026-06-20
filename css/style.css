@@ -335,6 +335,62 @@ html, body {
 .track-btns { flex-wrap: wrap; max-width: min(92vw, 560px); justify-content: center; }
 .track-btn { font-size: clamp(14px, 2vw, 18px); }
 
+/* ---------- Daily Time Trial info ---------- */
+
+.daily-info {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 16px;
+  padding: 12px 18px 14px;
+}
+
+.daily-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.daily-label {
+  letter-spacing: 0.5px;
+  color: var(--cream);
+  opacity: 0.85;
+}
+
+.daily-val {
+  font-variant-numeric: tabular-nums;
+  color: #ffe08a;
+}
+
+.ghost-toggle {
+  margin-top: 8px;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 800;
+  padding: 9px 16px;
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 999px;
+  background: linear-gradient(#ffce3d, #ff9a14);
+  color: #5a3000;
+  cursor: pointer;
+  box-shadow: 0 3px 0 var(--orange-deep), inset 0 1px 0 rgba(255,255,255,0.5);
+  transition: transform 0.1s, filter 0.1s;
+}
+
+.ghost-toggle:hover { transform: translateY(-1px); }
+.ghost-toggle.off {
+  background: rgba(0,0,0,0.3);
+  color: #cfd6e2;
+  box-shadow: none;
+}
+
 /* ---------- Fastest-lap board (main menu) ---------- */
 
 .lap-board {

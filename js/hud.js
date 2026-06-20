@@ -65,7 +65,7 @@ export function hideCountdown() {
   el.countdown.classList.add('hidden');
 }
 
-export function update(player, race, karts) {
+export function update(player, race, karts, ghost) {
   el.position.textContent = ORDINALS[player.rank - 1] || '';
   const lapShown = Math.min(player.lap + 1, TOTAL_LAPS);
   el.lap.textContent = player.finished ? 'Finished!' : `Lap ${lapShown}/${TOTAL_LAPS}`;
@@ -87,10 +87,10 @@ export function update(player, race, karts) {
 
   el.wrongway.classList.toggle('hidden', !player.wrongWay);
 
-  drawMinimap(player, karts);
+  drawMinimap(player, karts, ghost);
 }
 
-function drawMinimap(player, karts) {
+function drawMinimap(player, karts, ghost) {
   const ctx = mapCtx;
   ctx.clearRect(0, 0, el.minimap.width, el.minimap.height);
 
@@ -107,6 +107,7 @@ function drawMinimap(player, karts) {
     if (k === player) continue;
     drawDot(ctx, k, 4, '#' + k.def.kart.toString(16).padStart(6, '0'));
   }
+  if (ghost && ghost.group.visible) drawDot(ctx, ghost, 4.5, 'rgba(200,210,230,0.65)');
   drawDot(ctx, player, 5.5, '#ffffff');
 }
 

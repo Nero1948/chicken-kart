@@ -57,6 +57,7 @@
           <span class="diff-label">Mode</span>
           <div class="diff-btns">
             <button class="diff-btn mode-btn active" data-mode="single">Single Race</button>
+            <button class="diff-btn mode-btn" data-mode="daily">Daily</button>
             <button class="diff-btn mode-btn" data-mode="gp">Grand Prix</button>
             <button class="diff-btn mode-btn" data-mode="elim">Elimination</button>
           </div>
@@ -79,6 +80,16 @@
             <button class="diff-btn" data-diff="extreme">Extreme</button>
           </div>
         </div>
+
+        <!-- Daily Time Trial info: today's track, your best time and streak.
+             Shown only while the Daily mode is selected. -->
+        <div id="dailyInfo" class="daily-info hidden">
+          <div class="daily-row"><span class="daily-label">Today's track</span><span id="dailyTrack" class="daily-val">—</span></div>
+          <div class="daily-row"><span class="daily-label">Your best</span><span id="dailyBest" class="daily-val">—</span></div>
+          <div class="daily-row"><span class="daily-label">Day streak</span><span id="dailyStreak" class="daily-val">0 days</span></div>
+          <button id="ghostToggle" class="ghost-toggle" aria-pressed="true">👻 Race your ghost: On</button>
+        </div>
+
         <button id="playBtn" class="big-btn">PLAY</button>
         <div id="lapBoard" class="lap-board">
           <span class="board-title">🏁 Fastest Laps</span>

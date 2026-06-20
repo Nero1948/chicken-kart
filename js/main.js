@@ -14,6 +14,8 @@ import * as hud from './hud.js';
 import { audio } from './audio.js';
 import * as records from './records.js';
 import * as unlocks from './unlocks.js';
+import * as daily from './daily.js';
+import { GhostRecorder, Ghost } from './ghost.js';
 import { input, initInput, initTouch, updateInput, consumeFire } from './player.js';
 
 const ZERO_INPUT = { throttle: 0, steer: 0, brake: 0 };
@@ -36,8 +38,19 @@ let difficulty = 'medium';
 // position, always ending on the hardest track (Mt Maunganui Beach).
 const GP_RACE_COUNT = 4;
 const GP_POINTS = [9, 6, 4, 3, 2, 1]; // points for 1st..6th each race
-let mode = 'single'; // 'single' | 'gp' | 'elim'
+let mode = 'single'; // 'single' | 'daily' | 'gp' | 'elim'
 let gp = null;        // { raceIndex, tracks, field, points }
+
+// Daily Time Trial: a solo run on the day's track, racing the clock (and
+// optionally a ghost of your best run). `isDaily` marks the active race so the
+// loop records the ghost and the results show time-trial info.
+let isDaily = false;
+let ghost = null;       // translucent playback of a previous best run
+let ghostRec = null;    // records this run so it can become the next ghost
+let raceTime = 0;       // seconds since GO, the shared clock for ghost timing
+let ghostOn = (() => {
+  try { return localStorage.getItem('chickenkart.ghost') !== 'off'; } catch { return true; }
+})();
 
 // Elimination tournament: a six-racer knockout. Each race the last-placed
 // racer is dropped until one champion remains. Survive to the end and you win
@@ -108,6 +121,12 @@ const ui = {
   diffBtns: document.querySelectorAll('#difficulty .diff-btn'),
   trackBtns: document.querySelectorAll('#trackSel .track-btn'),
   trackSel: document.getElementById('trackSel'),
+  difficulty: document.getElementById('difficulty'),
+  dailyInfo: document.getElementById('dailyInfo'),
+  dailyTrack: document.getElementById('dailyTrack'),
+  dailyBest: document.getElementById('dailyBest'),
+  dailyStreak: document.getElementById('dailyStreak'),
+  ghostToggle: document.getElementById('ghostToggle'),
   touch: document.getElementById('touch'),
   hint: document.querySelector('#menu .controls-hint'),
 };
@@ -178,11 +197,18 @@ function wireUi() {
     btn.addEventListener('click', () => {
       mode = btn.dataset.mode;
       ui.modeBtns.forEach((b) => b.classList.toggle('active', b === btn));
-      // The track picker only applies to single races; a cup or tournament
-      // picks its own tracks.
-      ui.trackSel.classList.toggle('hidden', mode !== 'single');
+      applyModeUI();
       btn.blur();
     });
+  });
+
+  // Ghost on/off: remembered between visits so a preference sticks.
+  updateGhostToggle();
+  ui.ghostToggle.addEventListener('click', () => {
+    ghostOn = !ghostOn;
+    try { localStorage.setItem('chickenkart.ghost', ghostOn ? 'on' : 'off'); } catch { /* ignore */ }
+    updateGhostToggle();
+    ui.ghostToggle.blur();
   });
 
   ui.diffBtns.forEach((btn) => {
@@ -256,6 +282,7 @@ function wireUi() {
     hud.hide();
     setTouchControls(false);
     ui.menu.classList.remove('hidden');
+    if (mode === 'daily') refreshDailyInfo(); // show the streak/best just earned
     state = 'menu';
     audio.engineOff();
   });
@@ -266,6 +293,40 @@ function wireUi() {
     ui.muteBtn.textContent = audio.toggleMute() ? '🔇' : '🔊';
     ui.muteBtn.blur();
   });
+}
+
+// Show the right menu sections for the chosen mode. The track picker is only
+// for single races; difficulty is hidden for the solo Daily run; and the Daily
+// info panel (with the ghost toggle) appears only in Daily mode.
+function applyModeUI() {
+  ui.trackSel.classList.toggle('hidden', mode !== 'single');
+  ui.difficulty.classList.toggle('hidden', mode === 'daily');
+  ui.dailyInfo.classList.toggle('hidden', mode !== 'daily');
+  if (mode === 'daily') {
+    selectTrack(daily.todayTrackId()); // show today's track in the menu orbit
+    refreshDailyInfo();
+  }
+}
+
+// Fill the Daily panel with today's track, your best run and your streak.
+function refreshDailyInfo() {
+  const tid = daily.todayTrackId();
+  ui.dailyTrack.textContent = daily.trackName(tid);
+  const best = daily.getTrackBest(tid);
+  ui.dailyBest.textContent = best ? records.formatTime(best.time) : '—';
+  const ds = daily.getDaily();
+  ui.dailyStreak.textContent = `${ds.streak} day${ds.streak === 1 ? '' : 's'}`;
+}
+
+function updateGhostToggle() {
+  ui.ghostToggle.textContent = ghostOn ? '👻 Race your ghost: On' : '👻 Race your ghost: Off';
+  ui.ghostToggle.setAttribute('aria-pressed', String(ghostOn));
+  ui.ghostToggle.classList.toggle('off', !ghostOn);
+}
+
+// Find a racer definition by key across the base roster and the unlockables.
+function defFor(key) {
+  return CHARACTERS[key] || UNLOCKABLES[key] || AI_ROSTER.find((d) => d.key === key);
 }
 
 // Rebuild the world for a given track (only if it is not already active) and
@@ -376,6 +437,7 @@ function startElimination(key) {
 function startRace(key) {
   // Work out which track to race and who is on the grid.
   let trackId, field;
+  isDaily = mode === 'daily';
   if (mode === 'gp') {
     if (!gp) startGrandPrix(key);
     trackId = gp.tracks[gp.raceIndex];
@@ -384,6 +446,10 @@ function startRace(key) {
     if (!elim) startElimination(key);
     trackId = elim.tracks[elim.raceIndex];
     field = elim.field;
+  } else if (isDaily) {
+    // Solo time trial against the clock on the day's track: no rivals.
+    trackId = daily.todayTrackId();
+    field = [defFor(key)];
   } else {
     trackId = selectedTrack;
     field = buildSingleField(key);
@@ -435,10 +501,25 @@ function startRace(key) {
   player.forward(tmpF);
   camera.position.set(player.pos.x - tmpF.x * 9, player.pos.y + 4.6, player.pos.z - tmpF.z * 9);
   camera.lookAt(player.pos.x, player.pos.y + 1.4, player.pos.z);
+
+  // Daily run: start recording this attempt, and (if enabled) spawn a ghost of
+  // the best previous run on this track to race against.
+  raceTime = 0;
+  ghostRec = isDaily ? new GhostRecorder() : null;
+  if (isDaily && ghostOn) {
+    const best = daily.getTrackBest(trackId);
+    if (best && best.samples && best.samples.length) {
+      ghost = new Ghost(scene, defFor(best.key) || field[0], best.samples);
+    }
+  }
 }
 
 function cleanupRace() {
   for (const kart of karts) kart.dispose();
+  if (ghost) ghost.dispose();
+  ghost = null;
+  ghostRec = null;
+  raceTime = 0;
   if (items) items.dispose();
   if (crossers) crossers.dispose();
   if (cow) cow.dispose();
@@ -471,10 +552,62 @@ function renderLapBoard() {
   }
 }
 
+// Results for a Daily Time Trial: total time, whether it beat your personal
+// best, your day streak, and how you fared against the ghost. Reuses the result
+// screen's heading / lap-result / message slots instead of the placings list.
+function showDailyResults() {
+  ui.placings.classList.add('hidden');
+  ui.gpStandings.classList.add('hidden');
+
+  const runTime = player.lapTimes.reduce((a, b) => a + b, 0);
+  const racedGhost = !!(ghost && ghost.samples.length);
+  const ghostTime = racedGhost ? daily.getTrackBest(track.id)?.time : null;
+
+  // Save the run (and its ghost) if it's a new personal best, and update the
+  // streak / today's best. Order matters: read the old best for the ghost gap
+  // above before saveRun overwrites it.
+  const pb = daily.saveRun(track.id, runTime, chosenKey, ghostRec ? ghostRec.samples : []);
+  const ds = daily.recordDailyRun(runTime);
+  // A daily run also counts toward the menu's fastest-lap board.
+  if (player.bestLap != null) records.recordLap(track.id, player.bestLap);
+
+  ui.gpHeading.textContent = `🏁 Daily Time Trial · ${daily.trackName(track.id)}`;
+  ui.gpHeading.classList.remove('hidden');
+
+  ui.lapResult.textContent = pb
+    ? `🏆 New personal best! ${records.formatTime(runTime)}`
+    : `Your time: ${records.formatTime(runTime)}`;
+  ui.lapResult.classList.toggle('record', pb);
+  ui.lapResult.classList.remove('hidden');
+
+  let msg = `🔥 ${ds.streak} day streak`;
+  if (ghostTime != null) {
+    const delta = runTime - ghostTime;
+    msg += delta < 0
+      ? ` · beat your ghost by ${records.formatTime(-delta)}`
+      : ` · ${records.formatTime(delta)} behind your ghost`;
+  }
+  ui.unlockMsg.textContent = msg;
+  ui.unlockMsg.classList.remove('hidden');
+
+  setResultButtons({ next: false });
+  if (pb) spawnConfetti();
+  renderLapBoard();
+}
+
 function showResults() {
   state = 'results';
   setTouchControls(false);
   if (ui.trophy) ui.trophy.classList.add('hidden');
+
+  // Daily Time Trial has its own results layout (your time, streak, ghost gap).
+  if (isDaily) {
+    showDailyResults();
+    ui.results.classList.remove('hidden');
+    return;
+  }
+
+  ui.placings.classList.remove('hidden');
   const sorted = race.updateRanks();
   const medals = ['🥇', '🥈', '🥉', '4th', '5th', '6th'];
   ui.placings.innerHTML = '';
@@ -711,7 +844,16 @@ function animate() {
     crossers.update(dt, karts, items.particles);
     cow.update(dt, karts, items.particles);
     moa.update(dt, karts, items.particles);
-    hud.update(player, race, karts);
+
+    // Daily ghost: advance the shared race clock, record the player's path, and
+    // replay the ghost at the same point in time.
+    if (isDaily && race.state === 'racing') {
+      raceTime += dt;
+      if (ghostRec && !player.finished) ghostRec.sample(raceTime, player);
+      if (ghost) ghost.update(raceTime);
+    }
+
+    hud.update(player, race, karts, ghost);
     updateChaseCamera(dt);
 
     audio.setEngine(Math.abs(player.speed) / player.def.maxSpeed);

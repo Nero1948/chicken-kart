@@ -411,7 +411,7 @@ function lambert(color) {
 // Moto Cluck rides a motorbike (`def.vehicle === 'bike'`). Both share the same
 // chicken model and return the same shape, so the physics and animation code
 // downstream never has to care which one it is.
-function buildChickenKart(def) {
+export function buildChickenKart(def) {
   return def.vehicle === 'bike' ? buildMotorbike(def) : buildKart(def);
 }
 
