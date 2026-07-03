@@ -9,7 +9,7 @@ const RUN_KEY = 'chickenkart.timetrial.v1'; // per-track best run + ghost sample
 const DAILY_KEY = 'chickenkart.daily.v1';   // streak + today's best time
 
 // A fixed rotation so the daily track is predictable and shared by everyone.
-const ROTATION = ['farm', 'city', 'park', 'beach'];
+const ROTATION = ['farm', 'city', 'park', 'tokyo', 'beach'];
 
 // A stable whole-number index for the local calendar day. Shifting by the
 // timezone offset means the day rolls over at local midnight, not UTC midnight.

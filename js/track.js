@@ -1,8 +1,10 @@
-// The tracks. There are two: the Funny Farm (a dirt loop with a barn, tunnel
-// and jump ramp) and Chickens in the City (an Auckland circuit with the Sky
-// Tower and a drive over the Harbour Bridge). Each track shares the same loop
-// machinery — a closed Catmull-Rom curve sampled into evenly spaced points —
-// and then layers its own scenery and surface features on top.
+// The tracks: the Funny Farm (a dirt loop with a barn, tunnel and jump ramp),
+// Chickens in the City (an Auckland circuit with the Sky Tower and Harbour
+// Bridge), Tongariro Park (an off-road volcanic loop), Mt Maunganui Beach (the
+// tight seaside technical circuit) and Chickens in Tokyo (a huge street circuit
+// that crosses over itself at two intersections). Each track shares the same
+// loop machinery — a closed Catmull-Rom curve sampled into evenly spaced
+// points — and then layers its own scenery and surface features on top.
 //
 // `buildTrack(scene, id)` swaps the active track: it disposes the previous
 // track's meshes, resets the shared `track` object, and rebuilds. Every other
@@ -130,6 +132,58 @@ const BEACH_PTS = [
   [-44, -92],    // 24 sweep back to the start line
 ];
 
+// Chickens in Tokyo: the longest lap in the game, a grand city circuit that
+// crosses over itself TWICE on the main street, so rivals on another part of
+// the lap cut across in front of you at two signalled intersections. The lap:
+// start on the top straight heading west, down the west side (jump), around
+// the south-west sweep onto the riverside straight, north over the main street
+// (first intersection), a huge boulevard loop around Tokyo Tower, back south
+// over the main street again (second intersection), a tight 270-degree
+// cloverleaf ramp onto the main street itself, through both intersections the
+// other way, a hard chicane, then the east straight (jump) back to the top.
+const TOKYO_PTS = [
+  [0, 105],      // 0  start / finish, top straight (heading west)
+  [-52, 103],    // 1
+  [-100, 92],    // 2  north-west sweep
+  [-134, 64],    // 3
+  [-148, 30],    // 4  west straight (jump ramp lives here)
+  [-150, -8],    // 5
+  [-146, -44],   // 6
+  [-136, -84],   // 7  south-west sweep
+  [-118, -124],  // 8
+  [-88, -152],   // 9
+  [-48, -164],   // 10 riverside straight (heading east, cherry trees)
+  [-4, -166],    // 11
+  [34, -158],    // 12
+  [52, -136],    // 13 curve up toward the first intersection
+  [56, -100],    // 14 CROSSING the main street, heading north
+  [60, -60],     // 15 centre boulevard north
+  [62, -20],     // 16
+  [50, 14],      // 17 centre loop sweeping around Tokyo Tower
+  [16, 30],      // 18
+  [-12, 16],     // 19
+  [-18, -20],    // 20 southbound side of the loop
+  [-17, -60],    // 21
+  [-16, -95],    // 22 CROSSING the main street again, heading south
+  [-21, -126],   // 23 cloverleaf ramp entry (tight 270-degree right)
+  [-43, -137],   // 24 cloverleaf bottom
+  [-63, -129],   // 25 cloverleaf west
+  [-67, -116],   // 26 cloverleaf exit
+  [-56, -112],   // 27 onto the main street (heading east)
+  [-14, -112],   // 28 main street: through both intersections
+  [30, -112],    // 29
+  [78, -110],    // 30 main street east
+  [108, -98],    // 31 chicane: left flick
+  [124, -116],   // 32 chicane: right flick
+  [146, -92],    // 33 chicane exit
+  [154, -52],    // 34 east straight (jump ramp lives here)
+  [156, -12],    // 35
+  [146, 28],     // 36 north-east sweep
+  [122, 62],     // 37
+  [92, 88],      // 38
+  [58, 100],     // 39 onto the top straight
+];
+
 /* ------------------------- the shared track object ------------------------- */
 
 export const track = {
@@ -153,6 +207,7 @@ export const track = {
   jumps: [],       // park: [{ startIdx, lipIdx, height }] several off-road jumps
   bridge: null,    // city: { startIdx, endIdx, deckHeight } the Harbour Bridge arch
   roadworks: null, // city: { startIdx, endIdx, coneSide, openOffset } lane closure
+  crossings: [],   // tokyo: [{ i, j, pos }] where the loop crosses over itself
   specialBoxes: [], // [{ pos }] where the sparkly pink llama boxes sit
 };
 
@@ -173,6 +228,11 @@ export const TRACKS = {
     id: 'park', name: 'Tongariro Park', roadHalf: 7.5, limit: 13, pts: PARK_PTS,
     theme: { sky: 0x8fc1e3, fog: [340, 980] },
     build: buildPark,
+  },
+  tokyo: {
+    id: 'tokyo', name: 'Chickens in Tokyo', roadHalf: 7, limit: 12, pts: TOKYO_PTS,
+    theme: { sky: 0xa5c9e8, fog: [260, 700] },
+    build: buildTokyo,
   },
   beach: {
     id: 'beach', name: 'Mt Maunganui Beach', roadHalf: 6.5, limit: 11.5, pts: BEACH_PTS,
@@ -236,6 +296,7 @@ function resetTrack() {
   track.jumps = [];
   track.bridge = null;
   track.roadworks = null;
+  track.crossings = [];
   track.specialBoxes = [];
   track.length = 0;
 }
@@ -525,13 +586,15 @@ function buildStartLine(group) {
   const geo = new THREE.PlaneGeometry(track.roadHalf * 2, 3);
   const line = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex }));
   line.rotation.x = -Math.PI / 2;
-  line.position.set(s.pos.x, surfaceY(0, 0) + 0.03, s.pos.z);
+  // Sits above the road ribbon (which is at +0.04 when it follows elevation).
+  line.position.set(s.pos.x, surfaceY(0, 0) + 0.055, s.pos.z);
   line.rotation.z = Math.atan2(s.tan.x, s.tan.z);
   group.add(line);
 }
 
 // Roadside posts and rails. The farm uses white paddock fences; the city uses
-// low grey crash barriers that skip the elevated bridge.
+// low grey crash barriers that skip the elevated bridge. `opt.skip(i)` lets a
+// track leave gaps (Tokyo opens its barriers where the roads cross).
 function buildRoadside(group, opt) {
   const step = 6;
   const count = Math.ceil(N / step) * 2;
@@ -549,6 +612,7 @@ function buildRoadside(group, opt) {
     let firstSkipped = false;
     for (let i = 0; i < N; i += step) {
       if (opt.skipElevated && surfaceY(i, 0) > 1.0) { prev = null; continue; }
+      if (opt.skip && opt.skip(i)) { prev = null; continue; }
       const s = track.samples[i];
       const p = s.pos.clone().addScaledVector(s.normal, opt.offset * side);
       dummy.position.set(p.x, opt.postH / 2, p.z);
@@ -1439,7 +1503,7 @@ function buildBuildings(group) {
   }
 }
 
-function buildStreetlights(group) {
+function buildStreetlights(group, skip) {
   const poleMat = lambert(0x4a4f55);
   const lampMat = new THREE.MeshBasicMaterial({ color: 0xffe9a8 });
   const poleGeo = new THREE.CylinderGeometry(0.16, 0.2, 6, 8);
@@ -1447,7 +1511,8 @@ function buildStreetlights(group) {
   const lampGeo = new THREE.SphereGeometry(0.3, 8, 6);
 
   for (let i = 0; i < N; i += 13) {
-    if (surfaceY(i, 0) > 1.0) continue; // not on the bridge
+    if (surfaceY(i, 0) > 1.0) continue; // not on the bridge / ramps
+    if (skip && skip(i)) continue;      // not inside an intersection
     const side = (Math.floor(i / 13) % 2 === 0) ? 1 : -1;
     const s = track.samples[i];
     const base = s.pos.clone().addScaledVector(s.normal, (track.roadHalf + 2.4) * side);
@@ -2138,4 +2203,515 @@ function buildBeachUmbrellas(group) {
     group.add(u);
     placed++;
   }
+}
+
+/* ===================================================================== */
+/* ========================  CHICKENS IN TOKYO  ======================== */
+/* ===================================================================== */
+
+// Tokyo Tower stands inside the centre loop, so the boulevard sweeps right
+// around its base. The river runs along the far south; everything beyond
+// RIVER_EDGE is water, with Mt Fuji hazy on the horizon past the far bank.
+const TOKYO_TOWER = new THREE.Vector3(22, 0, 3);
+const RIVER_EDGE = -190;
+
+function buildTokyo(group) {
+  computeTokyoJumps();
+  computeTokyoCrossings();
+  buildTokyoGround(group);
+  buildRoad(group, { color: 0x41454c, shadeAmt: 0.07, followY: true, seed: 17 });
+  buildRoadStrip(group, 0, 0.5, 0xf4d03f, true);                        // centre line
+  buildRoadStrip(group, -(track.roadHalf - 0.7), 0.35, 0xf2f2f2, true); // edge lines
+  buildRoadStrip(group, track.roadHalf - 0.7, 0.35, 0xf2f2f2, true);
+  buildIntersections(group);
+  buildStartLine(group);
+  buildRoadside(group, {
+    offset: 11, postW: 0.22, postH: 0.9, rails: [0.62], color: 0x9aa1a6,
+    skipElevated: true, skip: nearTokyoCrossing,
+  });
+  buildTokyoJumps(group);
+  buildTokyoTower(group);
+  buildFuji(group);
+  buildTokyoBuildings(group);
+  buildNeonSigns(group);
+  buildSakura(group);
+  buildTorii(group);
+  buildStreetlights(group, nearTokyoCrossing);
+  buildBanner(group, 'CHICKENS IN TOKYO', '#d63d7d');
+  buildClouds(group, 5);
+  // Box rows: top straight, riverside straight, centre boulevard, and the main
+  // street between the two intersections. All clear of jumps and crossings.
+  setBoxSpots([0.03, 0.31, 0.42, 0.70]);
+  track.specialBoxes = [
+    { pos: track.samples[Math.floor(0.484 * N)].pos.clone() }, // top of the centre loop
+    { pos: track.samples[Math.floor(0.255 * N)].pos.clone() }, // south-west sweep
+  ];
+}
+
+// Two jump ramps, one on each of the west and east straights.
+function computeTokyoJumps() {
+  const defs = [
+    { lip: 0.136, height: 2.8 }, // west straight
+    { lip: 0.844, height: 2.6 }, // east straight
+  ];
+  track.jumps = defs.map((d) => {
+    const lipIdx = Math.floor(d.lip * N);
+    return { startIdx: (lipIdx - 6 + N) % N, lipIdx, height: d.height };
+  });
+}
+
+/* ------------------------- the two intersections ------------------------- */
+
+// Find where the loop crosses over itself by testing the sampled centre line
+// against itself (skipping neighbouring samples). Runs once per build; the
+// Tokyo layout is designed so this finds exactly two near-perpendicular
+// crossings on the main street.
+function computeTokyoCrossings() {
+  track.crossings = [];
+  for (let i = 0; i < N; i++) {
+    const a1 = track.samples[i].pos;
+    const a2 = track.samples[(i + 1) % N].pos;
+    for (let j = i + 20; j < N; j++) {
+      if (N - (j - i) < 20) continue; // skip wrap-around neighbours
+      const hit = segmentCross(a1, a2, track.samples[j].pos, track.samples[(j + 1) % N].pos);
+      if (hit) track.crossings.push({ i, j, pos: new THREE.Vector3(hit.x, 0, hit.z) });
+    }
+  }
+}
+
+// Where two flat 2D segments cross, or null.
+function segmentCross(p1, p2, p3, p4) {
+  const d1x = p2.x - p1.x, d1z = p2.z - p1.z;
+  const d2x = p4.x - p3.x, d2z = p4.z - p3.z;
+  const den = d1x * d2z - d1z * d2x;
+  if (Math.abs(den) < 1e-9) return null;
+  const t = ((p3.x - p1.x) * d2z - (p3.z - p1.z) * d2x) / den;
+  const u = ((p3.x - p1.x) * d1z - (p3.z - p1.z) * d1x) / den;
+  if (t < 0 || t > 1 || u < 0 || u > 1) return null;
+  return { x: p1.x + t * d1x, z: p1.z + t * d1z };
+}
+
+// True near either leg of any crossing, used to leave gaps in the barriers
+// and streetlights so the intersecting road can pass through.
+function nearTokyoCrossing(i) {
+  return track.crossings.some((c) =>
+    Math.min(Math.abs(i - c.i), N - Math.abs(i - c.i)) < 7 ||
+    Math.min(Math.abs(i - c.j), N - Math.abs(i - c.j)) < 7);
+}
+
+// Dress each crossing as a proper signalled intersection: a plain asphalt pad
+// (which also stops the two overlapping road ribbons flickering), zebra
+// crossings on all four approaches, and a traffic signal on each corner.
+function buildIntersections(group) {
+  const padMat = lambert(0x383c43);
+  for (const c of track.crossings) {
+    const tanA = track.samples[c.i].tan;
+    const tanB = track.samples[c.j].tan;
+
+    const pad = new THREE.Mesh(new THREE.PlaneGeometry(26, 26), padMat);
+    pad.rotation.x = -Math.PI / 2;
+    pad.rotation.z = Math.atan2(tanA.x, tanA.z);
+    pad.position.set(c.pos.x, 0.048, c.pos.z);
+    pad.receiveShadow = true;
+    group.add(pad);
+
+    for (const tan of [tanA, tanB]) {
+      for (const dir of [-1, 1]) buildCrosswalk(group, c.pos, tan, dir);
+    }
+
+    // A traffic signal on each of the four corners, angled to face the pad.
+    for (const sa of [-1, 1]) {
+      for (const sb of [-1, 1]) {
+        const p = c.pos.clone()
+          .addScaledVector(tanA, sa * 11.5)
+          .addScaledVector(tanB, sb * 11.5);
+        buildTrafficSignal(group, p, c.pos);
+      }
+    }
+  }
+}
+
+// One zebra crossing: a row of white stripes across the road, a little way
+// down one approach.
+function buildCrosswalk(group, centre, tan, dir) {
+  const mat = new THREE.MeshBasicMaterial({ color: 0xf2f2f2 });
+  const normal = new THREE.Vector3(-tan.z, 0, tan.x);
+  const base = centre.clone().addScaledVector(tan, dir * 10);
+  const geo = new THREE.BoxGeometry(0.75, 0.02, 2.0);
+  for (let k = -4; k <= 4; k++) {
+    const stripe = new THREE.Mesh(geo, mat);
+    stripe.position.copy(base).addScaledVector(normal, k * 1.5);
+    stripe.position.y = 0.07;
+    stripe.rotation.y = Math.atan2(tan.x, tan.z);
+    group.add(stripe);
+  }
+}
+
+function buildTrafficSignal(group, pos, lookTarget) {
+  const g = new THREE.Group();
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 5.2, 8), lambert(0x3d4248));
+  pole.position.y = 2.6;
+  pole.castShadow = true;
+  g.add(pole);
+  const box = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.7, 0.35), lambert(0x22262b));
+  box.position.y = 5.2;
+  g.add(box);
+  // Green, amber, red lamps.
+  [0x39d353, 0xf7d154, 0xff5449].forEach((hex, k) => {
+    const lamp = new THREE.Mesh(new THREE.CircleGeometry(0.2, 10),
+      new THREE.MeshBasicMaterial({ color: hex }));
+    lamp.position.set(-0.5 + k * 0.5, 5.2, 0.19);
+    g.add(lamp);
+  });
+  g.position.copy(pos);
+  g.rotation.y = Math.atan2(lookTarget.x - pos.x, lookTarget.z - pos.z);
+  group.add(g);
+}
+
+/* ------------------------- ground, river, jumps ------------------------- */
+
+function buildTokyoGround(group) {
+  const asphalt = lambert(0x6e747c);
+
+  // City ground north of the river.
+  const cityH = 750 - RIVER_EDGE;
+  const city = new THREE.Mesh(new THREE.PlaneGeometry(1500, cityH), asphalt);
+  city.rotation.x = -Math.PI / 2;
+  city.position.set(0, -0.02, RIVER_EDGE + cityH / 2);
+  city.receiveShadow = true;
+  group.add(city);
+
+  // The river along the south edge, and the far bank beyond it.
+  const river = new THREE.Mesh(new THREE.PlaneGeometry(1500, 210), lambert(0x2a5f8a));
+  river.rotation.x = -Math.PI / 2;
+  river.position.set(0, -1.4, RIVER_EDGE - 105);
+  group.add(river);
+  const bank = new THREE.Mesh(new THREE.PlaneGeometry(1500, 350), lambert(0x606871));
+  bank.rotation.x = -Math.PI / 2;
+  bank.position.set(0, -0.02, RIVER_EDGE - 210 - 175);
+  group.add(bank);
+
+  // A low concrete flood wall along the near riverbank.
+  const wall = new THREE.Mesh(new THREE.BoxGeometry(1500, 1.6, 1.2), lambert(0x9aa1a6));
+  wall.position.set(0, 0.5, RIVER_EDGE);
+  group.add(wall);
+}
+
+// Expressway-style jump ramps: a dark sloped deck over the rising road, grey
+// concrete wedge walls down the sides, and a chevron caution plank at the lip.
+function buildTokyoJumps(parent) {
+  const g = new THREE.Group();
+  const deckMat = lambert(0x4a4f57);
+  const concrete = lambert(0x8d939b);
+  for (const jp of track.jumps) {
+    const idxs = rangeIndices(jp.startIdx, jp.lipIdx);
+    buildSloped(g, idxs, -track.roadHalf, track.roadHalf,
+      (idx) => surfaceY(idx, 0) + 0.05, deckMat, true);
+
+    const lipS = track.samples[jp.lipIdx];
+    const lp = latPoint(lipS, 0);
+    lp.y = surfaceY(jp.lipIdx, 0);
+    const lip = new THREE.Mesh(
+      new THREE.BoxGeometry(track.roadHalf * 2, 0.5, 0.9),
+      makeChevronMaterial()
+    );
+    lip.position.copy(lp);
+    lip.position.y += 0.25;
+    lip.lookAt(lp.x + lipS.tan.x, lp.y + 0.25, lp.z + lipS.tan.z);
+    lip.castShadow = true;
+    g.add(lip);
+
+    // Concrete wedge walls, low at the foot and full height under the lip.
+    for (const side of [-1, 1]) {
+      const footS = track.samples[jp.startIdx];
+      const foot = latPoint(footS, side * (track.roadHalf + 0.5));
+      const top = latPoint(lipS, side * (track.roadHalf + 0.5));
+      const run = Math.hypot(top.x - foot.x, top.z - foot.z);
+      const shape = new THREE.Shape();
+      shape.moveTo(0, 0);
+      shape.lineTo(run, 0);
+      shape.lineTo(run, surfaceY(jp.lipIdx, 0) + 0.3);
+      shape.closePath();
+      const wall = new THREE.Mesh(
+        new THREE.ExtrudeGeometry(shape, { depth: 0.5, bevelEnabled: false }),
+        concrete
+      );
+      wall.position.set(foot.x, 0, foot.z);
+      wall.rotation.y = -Math.atan2(top.z - foot.z, top.x - foot.x);
+      wall.castShadow = true;
+      g.add(wall);
+    }
+  }
+  parent.add(g);
+}
+
+/* ------------------------- Tokyo Tower and Mt Fuji ------------------------- */
+
+function buildTokyoTower(group) {
+  const g = new THREE.Group();
+  const orange = lambert(0xd9502a);
+  const white = lambert(0xf4f6f8);
+
+  // Four splayed lattice legs with a brace ring partway up.
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      strut(g,
+        new THREE.Vector3(sx * 11, 0, sz * 11),
+        new THREE.Vector3(sx * 3, 24, sz * 3),
+        1.1, orange);
+    }
+  }
+  const b = 8.3;
+  const ring = [
+    [new THREE.Vector3(-b, 8, -b), new THREE.Vector3(b, 8, -b)],
+    [new THREE.Vector3(b, 8, -b), new THREE.Vector3(b, 8, b)],
+    [new THREE.Vector3(b, 8, b), new THREE.Vector3(-b, 8, b)],
+    [new THREE.Vector3(-b, 8, b), new THREE.Vector3(-b, 8, -b)],
+  ];
+  for (const [p, q] of ring) strut(g, p, q, 0.5, orange);
+
+  // The main observatory sits on top of the legs.
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(11, 3.6, 11), white);
+  deck.position.y = 25.8;
+  deck.castShadow = true;
+  g.add(deck);
+
+  // Tapering body above it, in alternating orange and white bands.
+  const bands = [
+    { r0: 4.6, r1: 3.6, h: 7.5, mat: orange },
+    { r0: 3.6, r1: 2.9, h: 6.5, mat: white },
+    { r0: 2.9, r1: 2.2, h: 6, mat: orange },
+    { r0: 2.2, r1: 1.7, h: 5.5, mat: white },
+  ];
+  let y = 27.6;
+  for (const bd of bands) {
+    const seg = new THREE.Mesh(new THREE.CylinderGeometry(bd.r1, bd.r0, bd.h, 16), bd.mat);
+    seg.position.y = y + bd.h / 2;
+    seg.castShadow = true;
+    g.add(seg);
+    y += bd.h;
+  }
+
+  // Top observatory, antenna mast and beacon.
+  const topDeck = new THREE.Mesh(new THREE.BoxGeometry(5.4, 2.6, 5.4), white);
+  topDeck.position.y = y + 1.3;
+  g.add(topDeck);
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.5, 15, 10), orange);
+  mast.position.y = y + 2.6 + 7.5;
+  g.add(mast);
+  const tip = new THREE.Mesh(new THREE.SphereGeometry(0.5, 10, 8),
+    new THREE.MeshBasicMaterial({ color: 0xff5449 }));
+  tip.position.y = y + 2.6 + 15;
+  g.add(tip);
+
+  g.position.copy(TOKYO_TOWER);
+  group.add(g);
+}
+
+// Mt Fuji: a huge snow-capped cone far beyond the river, softened by the fog
+// so it reads as a hazy landmark on the horizon.
+function buildFuji(group) {
+  const g = new THREE.Group();
+  const cone = new THREE.Mesh(new THREE.ConeGeometry(220, 200, 44), lambert(0x5a6273));
+  cone.position.y = 97;
+  g.add(cone);
+  const sf = 0.42;
+  const snow = new THREE.Mesh(new THREE.ConeGeometry(220 * sf, 200 * sf, 44), lambert(0xf4f8ff));
+  snow.position.y = 200 * (1 - sf / 2) - 3;
+  g.add(snow);
+  g.position.set(-160, 0, -560);
+  group.add(g);
+}
+
+/* ------------------------- streets and scenery ------------------------- */
+
+// Distance check against the racing line (and the tower) for placing scenery.
+function tokyoClear(x, z, pad) {
+  const p = new THREE.Vector3(x, 0, z);
+  if (p.distanceTo(TOKYO_TOWER) < 26) return false;
+  let minD = Infinity;
+  for (let i = 0; i < N; i += 3) {
+    minD = Math.min(minD, p.distanceTo(track.samples[i].pos));
+  }
+  return minD > pad;
+}
+
+function buildTokyoBuildings(group) {
+  const rng = mulberry32(4649);
+  const palettes = [
+    ['#6b7480', '#ffe7a8'], ['#57606c', '#9fe8ff'], ['#7a838d', '#ffb3d9'],
+    ['#4f5864', '#c8f0ff'], ['#87909a', '#ffd98a'],
+  ];
+  const baseTex = palettes.map((p) => makeWindowTexture(p[0], p[1]));
+
+  const placeBuilding = (x, z, w, d, h, ti) => {
+    const tex = baseTex[ti].clone();
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(Math.max(1, Math.round(w / 6)), Math.max(1, Math.round(h / 8)));
+    tex.needsUpdate = true;
+    const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d),
+      new THREE.MeshLambertMaterial({ map: tex }));
+    b.position.set(x, h / 2, z);
+    b.castShadow = true;
+    b.receiveShadow = true;
+    group.add(b);
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(w + 0.4, 0.6, d + 0.4), lambert(0x454d56));
+    cap.position.set(x, h + 0.3, z);
+    group.add(cap);
+  };
+
+  // Dense downtown blocks scattered between the streets, taller toward the
+  // north-east so the skyline builds as you climb the east straight.
+  let placed = 0, tries = 0;
+  while (placed < 60 && tries < 1400) {
+    tries++;
+    const x = (rng() - 0.5) * 380;
+    const z = -175 + rng() * 320;
+    if (!tokyoClear(x, z, 14)) continue;
+    const tall = (x > 40 && z > 20) ? 1.7 : 1.0;
+    const w = 6 + rng() * 9;
+    const d = 6 + rng() * 9;
+    const h = (9 + rng() * 24) * tall;
+    placeBuilding(x, z, w, d, h, Math.floor(rng() * baseTex.length));
+    placed++;
+  }
+
+  // A far skyline row north of the circuit, purely scenic.
+  for (let i = 0; i < 18; i++) {
+    const x = -220 + rng() * 440;
+    const z = 165 + rng() * 80;
+    placeBuilding(x, z, 8 + rng() * 10, 8 + rng() * 10, 10 + rng() * 22,
+      Math.floor(rng() * baseTex.length));
+  }
+}
+
+// Vertical neon sign boards along the streets, with glowing Japanese text.
+function makeNeonTexture(text, fg, bg) {
+  const c = document.createElement('canvas');
+  c.width = 64; c.height = 256;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, 64, 256);
+  ctx.strokeStyle = fg;
+  ctx.lineWidth = 4;
+  ctx.strokeRect(4, 4, 56, 248);
+  ctx.fillStyle = fg;
+  ctx.font = 'bold 40px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const chars = [...text].slice(0, 5);
+  chars.forEach((ch, k) => {
+    ctx.fillText(ch, 32, 128 + (k - (chars.length - 1) / 2) * 46);
+  });
+  return new THREE.CanvasTexture(c);
+}
+
+function buildNeonSigns(group) {
+  const signs = [
+    { f: 0.055, text: 'ラーメン', fg: '#ff4fa0', bg: '#26141f' },
+    { f: 0.105, text: 'カラオケ', fg: '#4fd8ff', bg: '#10222b' },
+    { f: 0.295, text: 'すし', fg: '#ffd84f', bg: '#2b230f' },
+    { f: 0.405, text: '東京', fg: '#ff6a4f', bg: '#2b160f' },
+    { f: 0.565, text: 'ゲーム', fg: '#7dff6a', bg: '#142b10' },
+    { f: 0.715, text: 'パチンコ', fg: '#ff4fa0', bg: '#26141f' },
+    { f: 0.795, text: 'ホテル', fg: '#4fd8ff', bg: '#10222b' },
+    { f: 0.905, text: 'コーヒー', fg: '#ffd84f', bg: '#2b230f' },
+    { f: 0.965, text: 'とり', fg: '#ff6a4f', bg: '#2b160f' },
+  ];
+  const poleMat = lambert(0x3d4248);
+  const sideMat = lambert(0x22262b);
+  let side = 1;
+  for (const sg of signs) {
+    const idx = Math.floor(sg.f * N);
+    if (nearTokyoCrossing(idx)) continue;
+    if (track.jumps.some((jp) => idxInRange(idx, jp.startIdx - 4, jp.lipIdx + 4))) continue;
+    const s = track.samples[idx];
+    const p = latPoint(s, (track.roadHalf + 6.5) * side);
+    if (!tokyoClear(p.x, p.z, 10)) { side = -side; continue; }
+
+    const g = new THREE.Group();
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 4, 8), poleMat);
+    pole.position.y = 2;
+    g.add(pole);
+    const faceMat = new THREE.MeshBasicMaterial({ map: makeNeonTexture(sg.text, sg.fg, sg.bg) });
+    const board = new THREE.Mesh(
+      new THREE.BoxGeometry(2.3, 9, 0.5),
+      [sideMat, sideMat, sideMat, sideMat, faceMat, faceMat]
+    );
+    board.position.y = 4 + 4.5;
+    board.castShadow = true;
+    g.add(board);
+    g.position.set(p.x, 0, p.z);
+    // Face the board across the road so it reads from the racing line.
+    g.rotation.y = Math.atan2(s.normal.x * side, s.normal.z * side) + Math.PI / 2;
+    group.add(g);
+    side = -side;
+  }
+}
+
+// Cherry blossom trees: an avenue along the riverside straight plus a few
+// around the torii gate near the top of the centre loop.
+function buildSakura(group) {
+  const rng = mulberry32(370);
+  const trunkMat = lambert(0x6e4a33);
+  const bloomMats = [lambert(0xf6b8ce), lambert(0xf2a3c4)];
+
+  const tree = (x, z, sc) => {
+    const g = new THREE.Group();
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.45, 2.6, 8), trunkMat);
+    trunk.position.y = 1.3;
+    g.add(trunk);
+    for (let k = 0; k < 3; k++) {
+      const r = 1.6 + rng() * 0.9;
+      const bloom = new THREE.Mesh(new THREE.SphereGeometry(r, 10, 8),
+        bloomMats[k % bloomMats.length]);
+      bloom.position.set((rng() - 0.5) * 2.2, 3.1 + (rng() - 0.5) * 1.2, (rng() - 0.5) * 2.2);
+      bloom.castShadow = true;
+      g.add(bloom);
+    }
+    g.scale.setScalar(sc);
+    g.position.set(x, 0, z);
+    group.add(g);
+  };
+
+  // The riverside avenue, alternating sides of the straight.
+  let side = 1;
+  for (let f = 0.262; f <= 0.348; f += 0.014) {
+    const idx = Math.floor(f * N);
+    const s = track.samples[idx];
+    const p = latPoint(s, (track.roadHalf + 5.5) * side);
+    if (p.z > RIVER_EDGE + 4) tree(p.x, p.z, 0.9 + rng() * 0.5);
+    side = -side;
+  }
+
+  // A cluster by the torii gate.
+  for (const [x, z] of [[4, 50], [30, 54], [18, 64]]) {
+    if (tokyoClear(x, z, 10)) tree(x, z, 1.0 + rng() * 0.4);
+  }
+}
+
+// A red torii gate between the centre loop and the top straight.
+function buildTorii(group) {
+  const g = new THREE.Group();
+  const red = lambert(0xc23b2e);
+  const dark = lambert(0x2b2f35);
+  for (const side of [-1, 1]) {
+    const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.65, 7.5, 10), red);
+    pillar.position.set(side * 4.2, 3.75, 0);
+    pillar.castShadow = true;
+    g.add(pillar);
+  }
+  const lintel = new THREE.Mesh(new THREE.BoxGeometry(12.4, 0.9, 1.1), red);
+  lintel.position.y = 7.6;
+  lintel.castShadow = true;
+  g.add(lintel);
+  const cap = new THREE.Mesh(new THREE.BoxGeometry(13.2, 0.5, 1.3), dark);
+  cap.position.y = 8.3;
+  g.add(cap);
+  const tie = new THREE.Mesh(new THREE.BoxGeometry(10, 0.7, 0.9), red);
+  tie.position.y = 5.9;
+  g.add(tie);
+  g.position.set(16, 0, 52);
+  g.rotation.y = 0.3;
+  group.add(g);
 }

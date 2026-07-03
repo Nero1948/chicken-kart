@@ -34,9 +34,9 @@ const DIFFICULTIES = {
 };
 let difficulty = 'medium';
 
-// Grand Prix: a series of races over all four tracks, scored by finishing
+// Grand Prix: a series of races over all five tracks, scored by finishing
 // position, always ending on the hardest track (Mt Maunganui Beach).
-const GP_RACE_COUNT = 4;
+const GP_RACE_COUNT = 5;
 const GP_POINTS = [9, 6, 4, 3, 2, 1]; // points for 1st..6th each race
 let mode = 'single'; // 'single' | 'daily' | 'gp' | 'elim'
 let gp = null;        // { raceIndex, tracks, field, points }
@@ -405,14 +405,14 @@ function buildSingleField(key) {
   return [playerDef, ...pool.slice(0, 5)];
 }
 
-// Set up a fresh Grand Prix: one race on each of the four tracks, the first
-// three shuffled and the hardest (Mt Maunganui Beach) always last as a grand
+// Set up a fresh Grand Prix: one race on each of the five tracks, the first
+// four shuffled and the hardest (Mt Maunganui Beach) always last as a grand
 // finale. One fixed field, points carried across all races. `wonAll` stays true
 // only while the player has won every race so far (the Extreme unlock test).
 function startGrandPrix(key) {
   gp = {
     raceIndex: 0,
-    tracks: [...shuffle(['farm', 'city', 'park']), 'beach'],
+    tracks: [...shuffle(['farm', 'city', 'park', 'tokyo']), 'beach'],
     field: buildSingleField(key),
     points: {},
     wonAll: true,
@@ -427,7 +427,7 @@ function startGrandPrix(key) {
 function startElimination(key) {
   elim = {
     raceIndex: 0,
-    tracks: [...shuffle(['farm', 'city', 'park', 'beach']), 'beach'],
+    tracks: [...shuffle(['farm', 'city', 'park', 'tokyo']), 'beach'],
     field: buildSingleField(key), // six defs, player first; shrinks each round
     eliminated: [],               // defs in the order they were knocked out
     diff: difficulty,
