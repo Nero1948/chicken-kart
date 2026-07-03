@@ -26,17 +26,24 @@ export class AIDriver {
       return;
     }
 
+    // Tracks share the same sample count but differ a lot in lap length, so a
+    // fixed number of samples is a different real distance on each track
+    // (Tokyo's samples are nearly twice as far apart as the farm's). Convert
+    // the tuned distances from world units into samples so the drivers aim
+    // and brake the same real distance ahead everywhere.
+    const spacing = track.length / track.N; // world units per sample
+
     // Rubber banding: trail the player, speed up a touch; lead by a lot, ease off.
     // The amounts come from the difficulty preset, so Hard rivals chase harder.
     const t = this.tuning;
-    const diff = playerKart.total - kart.total; // in track samples
-    let factor = this.skill + Math.max(-t.easeOff, Math.min(t.catchUp, diff * 0.0012));
+    const diff = (playerKart.total - kart.total) * spacing; // in world units
+    let factor = this.skill + Math.max(-t.easeOff, Math.min(t.catchUp, diff * 0.0008));
     if (kart.finished) factor = this.skill * 0.9; // cruise after the flag
     kart.aiFactor = Math.max(0.8, Math.min(t.cap, factor));
 
     // Aim at a point ahead on the track, with a gentle wobble so each
     // chicken takes a slightly different line
-    const lookahead = Math.floor(6 + Math.abs(kart.speed) * 0.45);
+    const lookahead = Math.max(3, Math.floor((9 + Math.abs(kart.speed) * 0.68) / spacing));
     const ti = (kart.idx + lookahead) % track.N;
     const s = track.samples[ti];
     // Normally weave a little; on the split, commit to a lane; through the road
@@ -52,7 +59,7 @@ export class AIDriver {
     inp.steer = Math.max(-1, Math.min(1, diffA * 2.5));
 
     // Ease off for sharp upcoming corners or big heading errors
-    const aheadTan = track.samples[(kart.idx + 22) % track.N].tan;
+    const aheadTan = track.samples[(kart.idx + Math.round(33 / spacing)) % track.N].tan;
     const hereTan = track.samples[kart.idx].tan;
     const curve = Math.abs(angleDiff(
       Math.atan2(aheadTan.x, aheadTan.z),
