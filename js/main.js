@@ -2,31 +2,37 @@
 // main loop that drives everything else.
 
 import * as THREE from 'three';
-import { buildTrack, track, inBarn, TRACKS } from './track.js';
-import { Kart, CHARACTERS, UNLOCKABLES, AI_ROSTER, statBars, resolveKartCollisions, resolveJumpStomps } from './kart.js';
+import { buildTrack, track, inBarn, TRACKS, updateTrack } from './track.js';
+import {
+  Kart, CHARACTERS, UNLOCKABLES, AI_ROSTER, statBars, buildChickenKart, angleDiff,
+  resolveKartCollisions, resolveJumpStomps, updateSlipstream,
+} from './kart.js';
 import { AIDriver } from './ai.js';
 import { ItemManager } from './items.js';
 import { Crossers } from './chickens.js';
 import { Cow } from './cow.js';
 import { Moa } from './moa.js';
-import { Race } from './race.js';
+import { Race, TOTAL_LAPS } from './race.js';
+import { createSky, createPost, renderPortraits } from './gfx.js';
 import * as hud from './hud.js';
 import { audio } from './audio.js';
 import * as records from './records.js';
 import * as unlocks from './unlocks.js';
 import * as daily from './daily.js';
 import { GhostRecorder, Ghost } from './ghost.js';
-import { input, initInput, initTouch, updateInput, consumeFire } from './player.js';
+import { input, initInput, initTouch, updateInput, consumeFire, consumePause } from './player.js';
 
-const ZERO_INPUT = { throttle: 0, steer: 0, brake: 0 };
+const ZERO_INPUT = { throttle: 0, steer: 0, brake: 0, drift: false };
 
 // Difficulty presets. `skills` are the AI base speed multipliers (one per
 // rival, fastest first). `catchUp`/`easeOff` control rubber banding: how much
 // a trailing AI speeds up and a leading AI backs off. `cap` is the highest
 // speed multiplier an AI may ever reach, so Hard rivals can out-drag the player.
 const DIFFICULTIES = {
-  easy:    { skills: [0.84, 0.81, 0.78, 0.75, 0.72], catchUp: 0.08, easeOff: 0.22, cap: 0.96 },
-  medium:  { skills: [0.99, 0.96, 0.93, 0.90, 0.87], catchUp: 0.16, easeOff: 0.10, cap: 1.12 },
+  // Easy and Medium rivals are a shade slower than their raw pace suggests,
+  // because they also earn drift boosts, trick boosts and boost pads now.
+  easy:    { skills: [0.82, 0.79, 0.76, 0.73, 0.70], catchUp: 0.08, easeOff: 0.22, cap: 0.95 },
+  medium:  { skills: [0.96, 0.93, 0.90, 0.87, 0.84], catchUp: 0.16, easeOff: 0.10, cap: 1.10 },
   hard:    { skills: [1.06, 1.03, 1.00, 0.97, 0.94], catchUp: 0.20, easeOff: 0.06, cap: 1.24 },
   // Extreme: rivals are flat-out fast, claw back hard when behind and barely
   // ease off when ahead. Winning every race here is a real test.
@@ -61,7 +67,26 @@ let elim = null;      // { raceIndex, tracks, field, eliminated, diff }
 // before init() builds the cards on first load).
 const CARD_HATS = { laya: '👑', heyhey: '🕶️', sir: '🎩', disco: '🪩', captain: '🦸', lava: '🌋', summit: '❄️', moto: '🏍️' };
 
-let renderer, scene, camera, hemi, sun;
+let renderer, scene, camera, hemi, sun, sky, post;
+const sunDir = new THREE.Vector3(0.5, 0.8, 0.25).normalize(); // direction toward the sun
+const horizonCol = new THREE.Color(0xcfe9f7);
+const HEMI_BASE = 1.25;
+const SUN_BASE = 2.1;
+let pixelRatio = 1;
+let slowT = 0;           // seconds the framerate has been struggling
+let quality = 2;         // 2 = full, 1 = no bloom, 0 = no bloom + lower resolution
+let paused = false;
+let autoDriver = null;   // drives the player's kart on a lap of honour after the flag
+let startPressT = null;  // seconds left on the countdown when accelerate was pressed
+let prevRaceState = null;
+let lastLap = 0;
+let camYaw = 0;
+let camY = 0;
+let finishT = 0;
+let gameTime = 0;
+// Debug helpers: add ?auto to the URL and the player's kart drives itself.
+const params = new URLSearchParams(location.search);
+const AUTO = params.has('auto');
 let darkness = 0;     // 0 = daylight, 1 = inside the dark barn
 let cluckTimer = 0;
 const currentSky = new THREE.Color(0x87ceeb); // follows the active track's theme
@@ -94,6 +119,7 @@ const isTouch = matchMedia('(pointer: coarse)').matches
 
 const clock = new THREE.Clock();
 const tmpF = new THREE.Vector3();
+const ORIGIN = new THREE.Vector3();
 const camTarget = new THREE.Vector3();
 const camLook = new THREE.Vector3();
 
@@ -108,6 +134,14 @@ const ui = {
   gpHeading: document.getElementById('gpHeading'),
   gpStandings: document.getElementById('gpStandings'),
   unlockMsg: document.getElementById('unlockMsg'),
+  pause: document.getElementById('pause'),
+  pauseBtn: document.getElementById('pauseBtn'),
+  resumeBtn: document.getElementById('resumeBtn'),
+  restartBtn: document.getElementById('restartBtn'),
+  quitBtn: document.getElementById('quitBtn'),
+  howTo: document.getElementById('howTo'),
+  howBtn: document.getElementById('howBtn'),
+  howClose: document.getElementById('howClose'),
   trophy: document.getElementById('trophy'),
   confetti: document.getElementById('confetti'),
   speedLines: document.getElementById('speedLines'),
@@ -142,35 +176,47 @@ init();
 function init() {
   // Cap the resolution lower on phones so the framerate stays smooth
   renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('game'), antialias: !isTouch });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, isTouch ? 1.5 : 2));
+  pixelRatio = Math.min(window.devicePixelRatio, isTouch ? 1.5 : 2);
+  renderer.setPixelRatio(pixelRatio);
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
   if (isTouch) {
     document.body.classList.add('touch');
-    if (ui.hint) ui.hint.innerHTML = '<span><b>Tap & hold</b> the on-screen buttons to drive</span>';
+    if (ui.hint) {
+      // Swap the keyboard hints for a touch one, keeping the How to play button
+      ui.hint.querySelectorAll('span').forEach((sp) => sp.remove());
+      const tip = document.createElement('span');
+      tip.innerHTML = '<b>Tap & hold</b> the on-screen buttons to drive';
+      ui.hint.prepend(tip);
+    }
+    document.querySelectorAll('.k-drift').forEach((k) => { k.textContent = 'DRIFT'; });
   }
 
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x87ceeb);
-  scene.fog = new THREE.Fog(0x87ceeb, 200, 460);
+  scene.background = new THREE.Color(0xcfe9f7);
+  scene.fog = new THREE.Fog(0xcfe9f7, 200, 460);
 
   // Far plane is generous so Tongariro Park's distant volcanoes stay in view.
-  camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 1200);
+  camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 1400);
 
-  hemi = new THREE.HemisphereLight(0xffffff, 0x88aa55, 0.9);
+  hemi = new THREE.HemisphereLight(0xdfefff, 0x9a8f6a, HEMI_BASE);
   scene.add(hemi);
-  sun = new THREE.DirectionalLight(0xfff3d0, 1.6);
-  sun.position.set(80, 130, 40);
+  sun = new THREE.DirectionalLight(0xfff1d6, SUN_BASE);
   sun.castShadow = true;
   sun.shadow.mapSize.set(isTouch ? 1024 : 2048, isTouch ? 1024 : 2048);
-  sun.shadow.camera.left = -160;
-  sun.shadow.camera.right = 160;
-  sun.shadow.camera.top = 160;
-  sun.shadow.camera.bottom = -160;
-  sun.shadow.camera.far = 400;
+  sun.shadow.camera.far = 500;
+  sun.shadow.bias = -0.0004;
+  sun.shadow.normalBias = 0.03;
   scene.add(sun);
+  scene.add(sun.target);
+  setShadowRange(190);
+
+  sky = createSky(scene);
+  // Bloom makes boost pads, sparks and flames glow. Skipped on phones to keep
+  // the framerate up (add ?nobloom to the URL to switch it off on desktop).
+  post = createPost(renderer, scene, camera, !isTouch && !params.has('nobloom'));
 
   buildTrack(scene, selectedTrack);
   applyTheme();
@@ -185,9 +231,59 @@ function init() {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+    post.setSize(window.innerWidth, window.innerHeight);
   });
 
+  // Pause automatically if the tab is hidden mid-race
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && state === 'racing' && race && !player.finished) setPaused(true);
+  });
+
+  if (params.has('debug') || AUTO) {
+    window.__ck = {
+      info: () => ({
+        state, track: track.id, pads: track.pads.length, corn: track.cornSpots.length,
+        bloom: post.bloom, rank: player?.rank, lap: player?.lap, speed: player && +player.speed.toFixed(1),
+        finished: player?.finished, laps: player?.lapTimes.map((t) => +t.toFixed(2)),
+        calls: renderer.info.render.calls, tris: renderer.info.render.triangles,
+        ranks: karts.map((k) => `${k.def.key}:${k.rank}:${k.lap}`),
+      }),
+      give: (item) => { if (player) { player.item = item; player.rollT = 0; } },
+      use: () => { if (player && items) items.useItem(player); },
+      // Fast-forward the simulation without drawing (for testing whole races)
+      sim: (seconds) => { for (let t = 0; t < seconds; t += 1 / 60) tick(1 / 60); },
+      player: () => player,
+      karts: () => karts,
+    };
+  }
+
   animate();
+}
+
+// How wide an area the sun's shadow map covers. Tight around the player while
+// racing (crisp shadows); wide for the menu's bird's-eye orbit.
+function setShadowRange(r) {
+  const c = sun.shadow.camera;
+  c.left = -r; c.right = r; c.top = r; c.bottom = -r;
+  c.updateProjectionMatrix();
+}
+
+// Keep the sun (and so its shadow map) centred on a point in the world.
+function aimSun(focus) {
+  sun.target.position.copy(focus);
+  sun.position.copy(focus).addScaledVector(sunDir, 190);
+}
+
+function setPaused(on) {
+  if (on && (state !== 'racing' || !race)) return;
+  paused = on;
+  ui.pause.classList.toggle('hidden', !on);
+  if (on) {
+    audio.engineOff();
+    ui.resumeBtn.focus();
+  } else {
+    clock.getDelta(); // swallow the time spent paused
+  }
 }
 
 function wireUi() {
@@ -267,6 +363,7 @@ function wireUi() {
     ui.results.classList.add('hidden');
     hud.hide();
     setTouchControls(false);
+    ui.pauseBtn.classList.add('hidden');
     ui.select.classList.remove('hidden');
     state = 'select';
     audio.engineOff();
@@ -281,10 +378,36 @@ function wireUi() {
     ui.results.classList.add('hidden');
     hud.hide();
     setTouchControls(false);
+    ui.pauseBtn.classList.add('hidden');
     ui.menu.classList.remove('hidden');
     if (mode === 'daily') refreshDailyInfo(); // show the streak/best just earned
     state = 'menu';
     audio.engineOff();
+  });
+
+  // Pause menu
+  ui.pauseBtn.addEventListener('click', () => { ui.pauseBtn.blur(); setPaused(!paused); });
+  ui.resumeBtn.addEventListener('click', () => { ui.resumeBtn.blur(); setPaused(false); });
+  ui.restartBtn.addEventListener('click', () => {
+    ui.restartBtn.blur();
+    setPaused(false);
+    cleanupRace();
+    startRace(chosenKey);
+  });
+  ui.quitBtn.addEventListener('click', () => {
+    ui.quitBtn.blur();
+    setPaused(false);
+    ui.mainMenu.click();
+  });
+
+  // How to play
+  ui.howBtn.addEventListener('click', () => {
+    ui.howTo.classList.remove('hidden');
+    ui.howClose.focus();
+  });
+  ui.howClose.addEventListener('click', () => {
+    ui.howTo.classList.add('hidden');
+    ui.howBtn.focus();
   });
 
   ui.muteBtn.textContent = audio.muted ? '🔇' : '🔊';
@@ -342,11 +465,21 @@ function selectTrack(id) {
 function applyTheme() {
   const th = track.theme || {};
   currentSky.set(th.sky ?? 0x87ceeb);
-  scene.background.copy(currentSky);
-  if (scene.fog) {
-    scene.fog.color.copy(currentSky);
-    if (th.fog) { scene.fog.near = th.fog[0]; scene.fog.far = th.fog[1]; }
-  }
+  horizonCol.set(th.horizon ?? 0xcfe9f7);
+  if (th.sunPos) sunDir.set(...th.sunPos).normalize();
+  sky.setTheme(th, sunDir);
+  scene.background.copy(horizonCol);
+  scene.fog.color.copy(horizonCol);
+  applyFog();
+}
+
+// Fog distances come from the track theme. The menu's high orbit sits much
+// further from the scenery than the chase camera, so it gets thinner fog.
+function applyFog() {
+  const f = (track.theme && track.theme.fog) || [200, 460];
+  const k = race ? 1 : 2.6;
+  scene.fog.near = f[0] * k;
+  scene.fog.far = f[1] * k;
 }
 
 // Build the character cards. Base chickens are always available; the fancy
@@ -354,14 +487,17 @@ function applyTheme() {
 function renderSelectCards() {
   ui.cards.innerHTML = '';
   const all = [...Object.values(CHARACTERS), ...Object.values(UNLOCKABLES)];
+  const open = all.filter((d) => !(d.locked && !unlocks.isUnlocked(d.key)));
+  const portraits = renderPortraits(open, buildChickenKart);
   for (const def of all) {
     const locked = def.locked && !unlocks.isUnlocked(def.key);
-    const card = document.createElement('div');
+    const card = document.createElement(locked ? 'div' : 'button');
     card.className = 'card' + (locked ? ' locked' : '');
+    if (!locked) card.type = 'button';
 
     if (locked) {
       const hint = def.tier === 'extreme'
-        ? 'Win all four races of a Grand Prix on Extreme to unlock'
+        ? 'Win every race of a Grand Prix on Extreme to unlock'
         : def.tier === 'tournament'
         ? 'Win an Elimination tournament to unlock'
         : 'Win a Grand Prix to unlock this racer';
@@ -377,11 +513,17 @@ function renderSelectCards() {
           <span class="stat-bar"><span class="stat-fill" style="width:${Math.round(v * 100)}%"></span></span>
           <span class="stat-num">${Math.round(v * 10)}</span>
         </div>`).join('');
+      const img = portraits.get(def.key);
+      const face = img
+        ? `<div class="card-face portrait" style="background:${kartHex}33; border: 4px solid ${kartHex}">
+             <img src="${img}" alt="" width="256" height="256">
+           </div>`
+        : `<div class="card-face" style="background:${kartHex}33; border: 4px solid ${kartHex}">
+             ${CARD_HATS[def.key] ? `<span class="hat">${CARD_HATS[def.key]}</span>` : ''}
+             🐔
+           </div>`;
       card.innerHTML = `
-        <div class="card-face" style="background:${kartHex}33; border: 4px solid ${kartHex}">
-          ${CARD_HATS[def.key] ? `<span class="hat">${CARD_HATS[def.key]}</span>` : ''}
-          🐔
-        </div>
+        ${face}
         <div class="card-name">${def.name}</div>
         <div class="card-tag">${def.tagline}</div>
         ${statRows}`;
@@ -488,19 +630,33 @@ function startRace(key) {
   cow = new Cow(scene);
   moa = new Moa(scene);
 
+  applyFog();
   resultTimer = 0;
   fanfarePlayed = false;
   lastPlayerRank = startRank; // where the player lines up on the grid
   state = 'racing';
+  paused = false;
+  autoDriver = AUTO ? new AIDriver(player, 1.0, diff) : null;
+  startPressT = null;
+  prevRaceState = 'countdown';
+  lastLap = 0;
+  finishT = 0;
+  prevBoosting = false;
+  prevSpin = false;
   ui.results.classList.add('hidden');
+  ui.pause.classList.add('hidden');
+  ui.pauseBtn.classList.remove('hidden');
   if (ui.confetti) ui.confetti.innerHTML = '';
   hud.show();
+  hud.showStartTip(true);
   setTouchControls(true);
+  setShadowRange(isTouch ? 60 : 75);
 
-  // Snap the camera straight behind the player so it does not swing in
-  player.forward(tmpF);
-  camera.position.set(player.pos.x - tmpF.x * 9, player.pos.y + 4.6, player.pos.z - tmpF.z * 9);
-  camera.lookAt(player.pos.x, player.pos.y + 1.4, player.pos.z);
+  // The camera starts out in front of the grid and sweeps round behind the
+  // player during the countdown (see updateChaseCamera).
+  camYaw = player.heading;
+  camY = player.pos.y;
+  updateChaseCamera(0);
 
   // Daily run: start recording this attempt, and (if enabled) spawn a ghost of
   // the best previous run on this track to race against.
@@ -532,8 +688,13 @@ function cleanupRace() {
   crossers = null;
   cow = null;
   moa = null;
+  autoDriver = null;
+  applyFog();
   hud.hideCountdown();
+  hud.showStartTip(false);
   setTouchControls(false);
+  setShadowRange(190);
+  audio.setSkid(false);
   if (ui.confetti) ui.confetti.innerHTML = '';
   if (ui.trophy) ui.trophy.classList.add('hidden');
   if (ui.speedLines) ui.speedLines.classList.remove('on');
@@ -598,6 +759,7 @@ function showDailyResults() {
 function showResults() {
   state = 'results';
   setTouchControls(false);
+  ui.pauseBtn.classList.add('hidden');
   if (ui.trophy) ui.trophy.classList.add('hidden');
 
   // Daily Time Trial has its own results layout (your time, streak, ghost gap).
@@ -826,6 +988,44 @@ function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
 
+  if (consumePause() && state === 'racing' && race) setPaused(!paused);
+  if (paused) {
+    consumeFire();
+    post.render();
+    return;
+  }
+
+  tick(dt);
+  sky.follow(camera);
+  post.render();
+  watchFramerate(dt);
+}
+
+// Keep the game smooth on slower computers. If the framerate stays under about
+// 40 for a few seconds of racing, step the graphics down: first drop the bloom
+// glow, then the resolution. It never steps back up, so there is no flicker.
+function watchFramerate(dt) {
+  if (state !== 'racing' || quality === 0 || document.hidden || AUTO) { slowT = 0; return; }
+  if (dt > 1 / 40) slowT += dt; else slowT = Math.max(0, slowT - dt * 2);
+  if (slowT < 3) return;
+  slowT = 0;
+  quality--;
+  if (quality === 1 && post.bloom) {
+    post.disable();
+  } else {
+    quality = 0;
+    pixelRatio = Math.min(pixelRatio, 1);
+    renderer.setPixelRatio(pixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  }
+}
+
+// Advance the whole game by `dt` seconds (everything except drawing it).
+function tick(dt) {
+
+  gameTime += dt;
+  updateTrack(dt, gameTime);
+
   if (race) {
     race.update(dt);
     updateInput();
@@ -834,12 +1034,19 @@ function animate() {
     if (playerDriving && consumeFire()) items.useItem(player);
     else consumeFire();
 
+    updateStart();
+
     for (const d of drivers) d.update(dt, race, items, player);
+    // After the flag (or with ?auto) an AI takes the player's wheel
+    if (autoDriver) autoDriver.update(dt, race, items, player);
     for (const kart of karts) {
-      kart.update(dt, kart === player ? (playerDriving ? input : ZERO_INPUT) : kart.aiInput);
+      let inp = kart.aiInput;
+      if (kart === player && !autoDriver) inp = playerDriving ? input : ZERO_INPUT;
+      kart.update(dt, inp);
     }
     resolveKartCollisions(karts);
     resolveJumpStomps(karts);
+    updateSlipstream(karts, dt);
     items.update(dt);
     crossers.update(dt, karts, items.particles);
     cow.update(dt, karts, items.particles);
@@ -853,15 +1060,25 @@ function animate() {
       if (ghost) ghost.update(raceTime);
     }
 
+    handlePlayerEvents();
+    for (const kart of karts) kart.events.length = 0;
+
     hud.update(player, race, karts, ghost);
     updateChaseCamera(dt);
+    aimSun(player.pos);
 
-    audio.setEngine(Math.abs(player.speed) / player.def.maxSpeed);
+    // Engine note follows speed (and revs on the grid if you hold accelerate)
+    if (race.state === 'countdown') {
+      audio.setEngine(input.throttle ? 0.45 + Math.sin(gameTime * 18) * 0.08 : 0.06);
+    } else {
+      audio.setEngine(Math.abs(player.speed) / player.def.maxSpeed, player.boostT > 0);
+    }
+    audio.setSkid(player.driftDir !== 0 && !player.airborne && playerDriving, player.driftLevel);
 
     // Juice: a kick of shake when a boost fires or you get hit, speed lines
     // while boosting, and a proud bawk whenever you climb a place.
     const boostingNow = player.boostT > 0;
-    if (boostingNow && !prevBoosting) addShake(0.5);
+    if (boostingNow && !prevBoosting) addShake(0.35);
     prevBoosting = boostingNow;
     const spinningNow = player.spinT > 0;
     if (spinningNow && !prevSpin) addShake(0.9);
@@ -872,26 +1089,127 @@ function animate() {
     }
     lastPlayerRank = player.rank;
 
+    // Lap callouts
+    if (player.lap !== lastLap && !player.finished) {
+      lastLap = player.lap;
+      const t = player.lapTimes[player.lapTimes.length - 1];
+      if (player.lap === TOTAL_LAPS - 1) {
+        hud.announce('FINAL LAP!', 'gold');
+        audio.play('finalLap');
+      } else {
+        hud.announce(`LAP ${player.lap + 1}`);
+        audio.play('lap');
+      }
+      if (t != null) hud.toast(`Lap time ${records.formatTime(t)}`);
+    }
+
     if (player.finished && !fanfarePlayed) {
       fanfarePlayed = true;
       audio.play('fanfare');
+      const place = ['1st', '2nd', '3rd', '4th', '5th', '6th'][player.rank - 1] || '';
+      hud.announce(isDaily ? 'FINISH!' : `FINISH! ${place}`, player.rank === 1 ? 'gold' : '');
+      // Hand the wheel to an AI for a lap of honour while the camera swings round
+      if (!autoDriver) autoDriver = new AIDriver(player, 0.82, DIFFICULTIES.easy);
     }
     if (player.finished && state === 'racing') {
+      finishT += dt;
       resultTimer += dt;
-      if (resultTimer > 2.2) showResults();
+      if (resultTimer > 3.2) showResults();
     }
   } else {
     // Slow scenic orbit behind the menus
     orbitAngle += dt * 0.06;
     camera.position.set(Math.sin(orbitAngle) * 150, 75, Math.cos(orbitAngle) * 150);
     camera.lookAt(0, 0, 0);
+    if (Math.abs(camera.fov - 62) > 0.1) { camera.fov = 62; camera.updateProjectionMatrix(); }
+    aimSun(ORIGIN);
     audio.setEngine(0);
   }
 
   const inBarnNow = state === 'racing' && !!player && inBarn(player.pos, player.idx);
   applyBarnDarkness(dt, inBarnNow);
+}
 
-  renderer.render(scene, camera);
+
+// The start: reward a well-timed launch. Press accelerate in the last half
+// second of the countdown for a rocket start; a bit earlier is still a good
+// start; holding it down from way too early just spins the wheels.
+function updateStart() {
+  if (race.state === 'countdown') {
+    if (input.throttle && startPressT === null) startPressT = race.t;
+    if (!input.throttle) startPressT = null;
+  } else if (prevRaceState === 'countdown') {
+    hud.showStartTip(false);
+    if (startPressT !== null && !autoDriver) {
+      if (startPressT <= 0.55) {
+        player.applyBoost(1.5, 1.36);
+        hud.announce('ROCKET START!', 'gold');
+        audio.play('boost');
+      } else if (startPressT <= 1.15) {
+        player.applyBoost(0.8, 1.24);
+        hud.toast('Good start!');
+        audio.play('miniturbo');
+      } else if (startPressT > 2.0) {
+        player.stallT = 1.2;
+        hud.toast('Wheelspin!');
+        audio.play('spin');
+      }
+    }
+    startPressT = null;
+  }
+  prevRaceState = race.state;
+}
+
+// React to the things that happened to the player's kart this frame: pop up a
+// toast, kick the camera, flash the screen.
+function handlePlayerEvents() {
+  for (const ev of player.events) {
+    switch (ev.type) {
+      case 'miniturbo':
+        hud.toast(['', 'Mini-turbo!', 'Super mini-turbo!', 'ULTRA mini-turbo!'][ev.level]);
+        break;
+      case 'land':
+        if (ev.trick) hud.toast('Trick boost!');
+        addShake(ev.trick ? 0.3 : 0.2);
+        break;
+      case 'slipstream':
+        hud.toast('Slipstream!');
+        break;
+      case 'pad':
+        addShake(0.3);
+        break;
+      case 'wall':
+        addShake(0.45);
+        break;
+      case 'startled':
+        hud.announce('SQUAWK!', 'bad');
+        hud.flash();
+        addShake(0.8);
+        break;
+      case 'splat':
+        hud.toast('Egg on your face!');
+        break;
+      case 'shieldPop':
+        hud.toast('Shield popped!');
+        break;
+      case 'spin':
+        if (ev.lost) hud.toast(`Dropped ${ev.lost} corn`);
+        break;
+      default:
+        break;
+    }
+  }
+  // An explosion close by rattles the camera even if it missed you
+  if (items.lastBlast) {
+    const b = items.lastBlast;
+    items.lastBlast = null;
+    const d = Math.hypot(b.x - player.pos.x, b.z - player.pos.z);
+    if (d < 30) addShake(0.7 * (1 - d / 30));
+  }
+  // The crow flashes the screen for whoever let it rip, too
+  for (const ev of player.events) {
+    if (ev.type === 'used' && ev.item === 'crow') hud.flash();
+  }
 }
 
 // Drives the barn into darkness with a flurry of chicken clucks, and eases
@@ -899,10 +1217,11 @@ function animate() {
 function applyBarnDarkness(dt, inside) {
   const target = inside ? 1 : 0;
   darkness += (target - darkness) * Math.min(1, 5 * dt);
-  scene.background.copy(currentSky).lerp(BARN_DARK, darkness);
+  scene.background.copy(horizonCol).lerp(BARN_DARK, darkness);
   scene.fog.color.copy(scene.background);
-  hemi.intensity = 0.9 * (1 - 0.93 * darkness);
-  sun.intensity = 1.6 * (1 - 0.96 * darkness);
+  sky.setDark(darkness);
+  hemi.intensity = HEMI_BASE * (1 - 0.93 * darkness);
+  sun.intensity = SUN_BASE * (1 - 0.96 * darkness);
 
   if (inside) {
     cluckTimer -= dt;
@@ -913,17 +1232,58 @@ function applyBarnDarkness(dt, inside) {
   }
 }
 
+// The chase camera. It trails the kart's heading with a little lag (so the
+// world swings rather than snaps), swings wide to show the corner in a drift,
+// pulls back and widens with speed, sweeps round from the front of the grid
+// during the countdown, and circles to the front again after the flag.
 function updateChaseCamera(dt) {
-  player.forward(tmpF);
-  camTarget.set(player.pos.x - tmpF.x * 9, player.pos.y + 4.6, player.pos.z - tmpF.z * 9);
-  const k = 1 - Math.pow(0.0001, dt);
-  camera.position.lerp(camTarget, k);
-  camLook.set(player.pos.x + tmpF.x * 5, player.pos.y + 1.4, player.pos.z + tmpF.z * 5);
+  const speedN = Math.max(0, Math.min(1.5, player.speed / player.def.maxSpeed));
+
+  // Extra swing around the kart for the intro sweep and the finish
+  let orbit = 0;
+  let extraDist = 0;
+  let extraH = 0;
+  if (race && race.state === 'countdown') {
+    const u = Math.max(0, Math.min(1, (race.t - 0.7) / 2.5));
+    const e = u * u * (3 - 2 * u);
+    orbit = e * Math.PI * 0.92;
+    extraDist = e * 5;
+    extraH = e * 1.5;
+  } else if (player.finished) {
+    const u = Math.min(1, finishT / 1.6);
+    const e = u * u * (3 - 2 * u);
+    orbit = e * 2.55;
+    extraDist = e * 1.5;
+    extraH = -e * 1.2;
+  }
+
+  const wantYaw = player.heading + player.driftVis * 0.42;
+  camYaw += angleDiff(wantYaw, camYaw) * (dt > 0 ? Math.min(1, 6.5 * dt) : 1);
+  camY += (player.pos.y - camY) * (dt > 0 ? Math.min(1, 7 * dt) : 1);
+
+  const yaw = camYaw + orbit;
+  const dist = 8.4 + speedN * 1.5 + extraDist;
+  const height = 4.3 + speedN * 0.3 + extraH;
+  camTarget.set(
+    player.pos.x - Math.sin(yaw) * dist,
+    camY + height,
+    player.pos.z - Math.cos(yaw) * dist
+  );
+  if (dt > 0) camera.position.lerp(camTarget, 1 - Math.pow(0.00002, dt));
+  else camera.position.copy(camTarget);
+
+  // Look a little way ahead of the kart (less so while orbiting round it)
+  const ahead = 5 * (1 - Math.min(1, Math.abs(orbit) / 1.2));
+  camLook.set(
+    player.pos.x + Math.sin(camYaw) * ahead,
+    camY + 1.5,
+    player.pos.z + Math.cos(camYaw) * ahead
+  );
   camera.lookAt(camLook);
 
-  const targetFov = player.boostT > 0 ? 72 : 62;
+  const targetFov = 60 + Math.min(1, speedN) * 5 + (player.boostT > 0 ? 9 : 0);
   if (Math.abs(camera.fov - targetFov) > 0.1) {
-    camera.fov += (targetFov - camera.fov) * Math.min(1, 6 * dt);
+    camera.fov += (targetFov - camera.fov) * Math.min(1, 5 * dt);
     camera.updateProjectionMatrix();
   }
 

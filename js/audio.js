@@ -8,6 +8,7 @@ class AudioSystem {
     this.master = null;
     this.engineGain = null;
     this.engineOscs = [];
+    this.skidGain = null;
     this.muted = localStorage.getItem('ck_muted') === '1';
   }
 
@@ -42,13 +43,51 @@ class AudioSystem {
       osc.start();
       this.engineOscs.push(osc);
     }
+    this.engineFilter = filter;
+
+    // Tyre squeal: looping filtered noise that is faded up while drifting
+    const len = this.ctx.sampleRate;
+    const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+    const skid = this.ctx.createBufferSource();
+    skid.buffer = buf;
+    skid.loop = true;
+    const band = this.ctx.createBiquadFilter();
+    band.type = 'bandpass';
+    band.frequency.value = 1900;
+    band.Q.value = 5;
+    this.skidGain = this.ctx.createGain();
+    this.skidGain.gain.value = 0;
+    skid.connect(band);
+    band.connect(this.skidGain);
+    this.skidGain.connect(this.master);
+    skid.start();
+    this.skidBand = band;
   }
 
-  setEngine(speedNorm) {
+  // Fade the tyre squeal in or out. `level` is the mini-turbo level (0-3),
+  // which lifts the pitch so you can hear the charge build.
+  setSkid(on, level = 0) {
+    if (!this.ctx || !this.skidGain) return;
+    const t = this.ctx.currentTime;
+    this.skidGain.gain.setTargetAtTime(on ? 0.05 : 0, t, 0.05);
+    this.skidBand.frequency.setTargetAtTime(1700 + level * 420, t, 0.1);
+  }
+
+  // Corn pickup: a bright pling that climbs in pitch as you chain them
+  corn(streak) {
+    const f = 880 * Math.pow(1.06, streak);
+    this.tone(f, 0.09, { type: 'triangle', vol: 0.16 });
+    this.tone(f * 1.5, 0.12, { type: 'sine', vol: 0.12, delay: 0.05 });
+  }
+
+  setEngine(speedNorm, boosting = false) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
-    const freq = 65 + speedNorm * 120;
-    const gain = speedNorm > 0.01 ? 0.035 + speedNorm * 0.045 : 0;
+    const freq = 62 + speedNorm * 125 + (boosting ? 28 : 0);
+    const gain = speedNorm > 0.01 ? 0.035 + Math.min(1.3, speedNorm) * 0.045 : 0;
+    this.engineFilter.frequency.setTargetAtTime(boosting ? 900 : 500, t, 0.1);
     for (const osc of this.engineOscs) {
       osc.frequency.setTargetAtTime(freq, t, 0.08);
     }
@@ -56,7 +95,9 @@ class AudioSystem {
   }
 
   engineOff() {
-    if (this.ctx) this.engineGain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.1);
+    if (!this.ctx) return;
+    this.engineGain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.1);
+    this.setSkid(false);
   }
 
   toggleMute() {
@@ -212,6 +253,87 @@ class AudioSystem {
         // a springy launch off the ramp
         this.tone(280, 0.28, { type: 'square', vol: 0.16, slide: 520 });
         this.noise(0.18, { vol: 0.08, freq: 1600 });
+        break;
+      case 'hop':
+        this.tone(330, 0.09, { type: 'triangle', vol: 0.12, slide: 200 });
+        break;
+      case 'land':
+        this.noise(0.12, { vol: 0.14, freq: 500 });
+        this.tone(110, 0.1, { type: 'sine', vol: 0.14, slide: -40 });
+        break;
+      case 'spark1':
+        this.tone(1100, 0.1, { type: 'triangle', vol: 0.14, slide: 400 });
+        break;
+      case 'spark2':
+        this.tone(1400, 0.12, { type: 'triangle', vol: 0.15, slide: 500 });
+        break;
+      case 'spark3':
+        this.tone(1700, 0.08, { type: 'triangle', vol: 0.15, slide: 500 });
+        this.tone(2200, 0.14, { type: 'triangle', vol: 0.14, slide: 400, delay: 0.07 });
+        break;
+      case 'miniturbo':
+        this.noise(0.3, { vol: 0.16, freq: 2800 });
+        this.tone(300, 0.3, { type: 'sawtooth', vol: 0.11, slide: 520 });
+        break;
+      case 'pad':
+        this.noise(0.35, { vol: 0.18, freq: 3200 });
+        this.tone(440, 0.32, { type: 'square', vol: 0.09, slide: 700 });
+        break;
+      case 'trick':
+        this.tone(660, 0.08, { type: 'triangle', vol: 0.16 });
+        this.tone(990, 0.08, { type: 'triangle', vol: 0.16, delay: 0.07 });
+        this.tone(1320, 0.16, { type: 'triangle', vol: 0.16, delay: 0.14 });
+        break;
+      case 'slip':
+        this.noise(0.55, { vol: 0.2, freq: 3600 });
+        this.tone(500, 0.4, { type: 'sine', vol: 0.1, slide: 600 });
+        break;
+      case 'bump':
+        this.noise(0.1, { vol: 0.2, freq: 700 });
+        this.tone(150, 0.1, { type: 'square', vol: 0.12, slide: -50 });
+        break;
+      case 'bonk':
+        this.tone(520, 0.07, { type: 'sine', vol: 0.12, slide: -200 });
+        break;
+      case 'throw':
+        this.noise(0.2, { vol: 0.14, freq: 2400 });
+        this.tone(700, 0.18, { type: 'sine', vol: 0.12, slide: -350 });
+        break;
+      case 'splat':
+        this.noise(0.22, { vol: 0.28, freq: 600 });
+        this.tone(200, 0.16, { type: 'sine', vol: 0.2, slide: -120 });
+        break;
+      case 'shield':
+        this.tone(520, 0.3, { type: 'sine', vol: 0.16, slide: 520 });
+        this.tone(780, 0.35, { type: 'sine', vol: 0.1, slide: 780, delay: 0.05 });
+        break;
+      case 'shieldPop':
+        this.noise(0.15, { vol: 0.2, freq: 4000 });
+        this.tone(1200, 0.18, { type: 'sine', vol: 0.16, slide: -900 });
+        break;
+      case 'chilli':
+        this.noise(0.7, { vol: 0.22, freq: 2200 });
+        this.tone(180, 0.7, { type: 'sawtooth', vol: 0.15, slide: 700 });
+        break;
+      case 'crow': {
+        // cock-a-doodle-doo: five rising-and-falling syllables
+        const notes = [[620, 0.12, 120], [620, 0.1, 80], [780, 0.14, 160], [700, 0.12, -40], [900, 0.5, -420]];
+        let d = 0;
+        for (const [f, dur, slide] of notes) {
+          this.tone(f, dur, { type: 'sawtooth', vol: 0.2, slide, delay: d, vibRate: 22, vibDepth: 30 });
+          this.tone(f * 1.5, dur, { type: 'square', vol: 0.07, slide, delay: d });
+          d += dur + 0.03;
+        }
+        break;
+      }
+      case 'finalLap': {
+        const notes = [784, 784, 784, 1047];
+        notes.forEach((f, i) => this.tone(f, i === 3 ? 0.4 : 0.1, { vol: 0.18, delay: i * 0.13 }));
+        break;
+      }
+      case 'lap':
+        this.tone(880, 0.1, { vol: 0.14 });
+        this.tone(1175, 0.18, { vol: 0.14, delay: 0.1 });
         break;
       case 'fanfare': {
         const notes = [523, 659, 784, 1047];

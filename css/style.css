@@ -879,3 +879,242 @@ body.touch #touch:not(.hidden) { display: flex; }
 body.touch #itemSlot { top: 12px; right: 12px; width: 58px; height: 58px; font-size: 30px; }
 body.touch #muteBtn { top: 18px; right: 80px; left: auto; bottom: auto; width: 46px; height: 46px; font-size: 22px; }
 body.touch #minimap { top: 78px; right: 12px; bottom: auto; width: 86px; height: 86px; }
+
+
+/* =====================================================================
+   Racing refresh: corn counter, speedo, announcements, pause, how-to
+   ===================================================================== */
+
+#position { transform-origin: left center; }
+#position.bump { animation: posBump 0.45s ease-out; }
+@keyframes posBump {
+  0% { transform: scale(1.7) rotate(-6deg); }
+  60% { transform: scale(0.94); }
+  100% { transform: scale(1); }
+}
+#position sup { font-size: 0.5em; margin-left: 2px; }
+
+#cornCount {
+  left: 22px;
+  top: clamp(190px, 23.5vw, 228px);
+  background: rgba(20, 26, 38, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  padding: 4px 14px;
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  color: #ffe08a;
+  font-size: clamp(17px, 2.4vw, 24px);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+}
+#cornCount.full { color: #fff; background: linear-gradient(#ffb300cc, #ff7a00cc); }
+#cornCount.pop { animation: chipPop 0.25s ease-out; }
+@keyframes chipPop { 0% { transform: scale(1.25); } 100% { transform: scale(1); } }
+
+#speedo {
+  right: 190px;
+  bottom: 22px;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: #fff;
+  font-weight: 800;
+  text-shadow: 0 3px 0 rgba(0,0,0,0.35), 0 6px 14px rgba(0,0,0,0.35);
+  font-variant-numeric: tabular-nums;
+}
+#speedo b { font-size: clamp(34px, 4.6vw, 54px); line-height: 1; min-width: 2.1ch; text-align: right; }
+#speedo span { font-size: clamp(13px, 1.6vw, 17px); opacity: 0.85; letter-spacing: 0.08em; }
+#speedo.boost b { color: #ffd23a; }
+
+#itemSlot.has { border-color: #ffd23a; box-shadow: 0 0 0 4px rgba(255, 210, 58, 0.35), 0 6px 14px rgba(0,0,0,0.3); }
+#itemSlot.got { animation: itemGot 0.4s ease-out; }
+@keyframes itemGot {
+  0% { transform: scale(1.5) rotate(-10deg); }
+  60% { transform: scale(0.92); }
+  100% { transform: scale(1); }
+}
+
+#announce, #toast {
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-weight: 800;
+  pointer-events: none;
+  text-align: center;
+}
+#announce {
+  top: 15vh;
+  font-size: clamp(34px, 6.4vw, 76px);
+  color: #fff;
+  -webkit-text-stroke: 2px #b3541e;
+  text-shadow: 0 5px 0 #b3541e, 0 12px 26px rgba(0,0,0,0.4);
+  letter-spacing: 0.02em;
+  animation: announceIn 2.2s ease-out forwards;
+}
+#announce.gold { color: #ffe45c; }
+#announce.bad { color: #ff8a8a; -webkit-text-stroke-color: #7a1f1f; text-shadow: 0 5px 0 #7a1f1f, 0 12px 26px rgba(0,0,0,0.4); }
+@keyframes announceIn {
+  0% { transform: translateX(-50%) scale(2.4); opacity: 0; }
+  10% { transform: translateX(-50%) scale(0.94); opacity: 1; }
+  16% { transform: translateX(-50%) scale(1); }
+  80% { opacity: 1; }
+  100% { transform: translateX(-50%) scale(1); opacity: 0; }
+}
+#toast {
+  top: 29vh;
+  font-size: clamp(18px, 2.8vw, 30px);
+  color: #fff7d6;
+  background: rgba(20, 26, 38, 0.55);
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 99px;
+  padding: 4px 18px;
+  animation: toastIn 1.3s ease-out forwards;
+}
+@keyframes toastIn {
+  0% { transform: translateX(-50%) translateY(14px); opacity: 0; }
+  12% { transform: translateX(-50%) translateY(0); opacity: 1; }
+  75% { opacity: 1; }
+  100% { transform: translateX(-50%) translateY(-10px); opacity: 0; }
+}
+
+#startTip {
+  position: fixed;
+  left: 50%;
+  bottom: 16vh;
+  transform: translateX(-50%);
+  z-index: 8;
+  pointer-events: none;
+  color: #fff;
+  font-weight: 700;
+  font-size: clamp(14px, 2vw, 20px);
+  background: rgba(20, 26, 38, 0.55);
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 99px;
+  padding: 6px 18px;
+  white-space: nowrap;
+}
+#startTip b { color: #ffd23a; }
+
+/* Egg on your face: yolky blobs over the view that slide away */
+#splat {
+  position: fixed;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.9s ease;
+  background:
+    radial-gradient(ellipse 22% 26% at 30% 38%, #ffc81e 0 55%, #fff6d8 56% 78%, transparent 80%),
+    radial-gradient(ellipse 18% 22% at 68% 30%, #ffc81e 0 52%, #fff6d8 53% 80%, transparent 82%),
+    radial-gradient(ellipse 26% 22% at 56% 66%, #ffbf12 0 50%, #fff6d8 51% 80%, transparent 82%),
+    radial-gradient(ellipse 12% 16% at 18% 70%, #fff6d8 0 78%, transparent 80%),
+    radial-gradient(ellipse 10% 14% at 84% 62%, #fff6d8 0 78%, transparent 80%);
+}
+#splat.on { opacity: 0.93; transition: opacity 0.08s ease; }
+
+#flash {
+  position: fixed;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  background: #fff7c8;
+  opacity: 0;
+}
+#flash.go { animation: flashGo 0.5s ease-out; }
+@keyframes flashGo { 0% { opacity: 0.75; } 100% { opacity: 0; } }
+
+/* ---------- Pause ---------- */
+
+#pause { background: rgba(12, 16, 26, 0.72); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); z-index: 30; }
+.pause-btns { flex-direction: column; align-items: center; }
+.pause-btns .big-btn { min-width: 260px; }
+
+#pauseBtn {
+  position: fixed;
+  bottom: 16px;
+  left: 78px;
+  z-index: 20;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: 3px solid rgba(255,255,255,0.7);
+  background: rgba(0,0,0,0.35);
+  color: #fff;
+  font-size: 22px;
+  cursor: pointer;
+}
+#muteBtn:focus-visible, #pauseBtn:focus-visible, .how-btn:focus-visible, .big-btn:focus-visible,
+.diff-btn:focus-visible, .card:focus-visible {
+  outline: 3px solid #ffd23a;
+  outline-offset: 3px;
+}
+
+/* ---------- How to play ---------- */
+
+.controls-hint { flex-wrap: wrap; justify-content: center; align-items: center; }
+.how-btn {
+  font: inherit;
+  font-weight: 800;
+  color: #3a2400;
+  background: linear-gradient(#ffd75a, #ffb21e);
+  border: none;
+  border-radius: 99px;
+  padding: 5px 16px;
+  cursor: pointer;
+  box-shadow: 0 3px 0 var(--orange-deep);
+}
+.how-btn:hover { transform: translateY(-1px); }
+
+#howTo { background: rgba(12, 16, 26, 0.72); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); z-index: 30; overflow-y: auto; justify-content: flex-start; }
+#howTo::before, #howTo::after { content: ''; flex: 1 0 8px; }
+.how-panel {
+  width: min(94vw, 640px);
+  background: var(--cream);
+  color: #4a3a22;
+  border-radius: var(--radius);
+  padding: 22px 26px 26px;
+  box-shadow: var(--panel-shadow);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+.how-heading { font-size: clamp(26px, 4vw, 36px); color: #3a2a12; line-height: 1; }
+.how-list { list-style: none; text-align: left; display: flex; flex-direction: column; gap: 9px; width: 100%; }
+.how-list li { display: flex; gap: 12px; align-items: flex-start; font-size: clamp(14px, 1.9vw, 17px); line-height: 1.3; }
+.how-list b:first-child { display: block; color: #b3541e; }
+.how-icon { font-size: 26px; width: 34px; text-align: center; flex: none; }
+.how-items { display: flex; flex-wrap: wrap; gap: 6px 8px; justify-content: center; }
+.how-items span { background: #f1e6cc; border-radius: 99px; padding: 3px 12px; font-weight: 700; font-size: 14px; }
+
+/* ---------- Racer portraits on the select cards ---------- */
+
+.card-face.portrait { overflow: visible; font-size: 0; }
+.card-face.portrait img { width: 132%; height: 132%; object-fit: contain; margin: -22% -16% -10%; pointer-events: none; filter: drop-shadow(0 6px 6px rgba(0,0,0,0.25)); }
+.card { cursor: pointer; font: inherit; color: inherit; text-align: center; }
+.stat-bar { display: block; }
+.stat-fill { display: block; }
+
+/* ---------- Touch layout for the new bits ---------- */
+
+.tbtn.drift { width: 74px; height: 58px; border-radius: 30px; font-size: 15px; letter-spacing: 0.04em; }
+body.touch #speedo { display: none; }
+body.touch #pauseBtn { top: 18px; right: 134px; left: auto; bottom: auto; width: 46px; height: 46px; font-size: 20px; }
+body.touch #startTip { bottom: 30vh; }
+body.touch .key-only { display: none; }
+
+@media (max-width: 600px) {
+  #announce { top: 20vh; }
+  #speedo { right: 130px; }
+}
+@media (max-height: 480px) {
+  /* Phones in landscape: tuck the HUD chips up so they clear the steering buttons */
+  #lapInfo { display: none; }
+  #cornCount { top: clamp(120px, 15.5vw, 150px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #announce, #toast, #position.bump, #itemSlot.got, #cornCount.pop { animation: none; }
+}

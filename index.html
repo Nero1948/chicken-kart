@@ -14,7 +14,8 @@
   <script type="importmap">
     {
       "imports": {
-        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
       }
     }
   </script>
@@ -101,7 +102,31 @@
 
     <div class="controls-hint">
       <span><b>Arrows / WASD</b> drive</span>
+      <span><b>Shift</b> or <b>X</b> hop + drift</span>
       <span><b>Space</b> use item</span>
+      <span><b>Esc</b> pause</span>
+      <button id="howBtn" class="how-btn" type="button">How to play</button>
+    </div>
+  </div>
+
+  <!-- How to play: a quick guide to the racing tricks -->
+  <div id="howTo" class="screen hidden" role="dialog" aria-modal="true" aria-labelledby="howHeading">
+    <div class="how-panel">
+      <h2 id="howHeading" class="how-heading">How to play</h2>
+      <ul class="how-list">
+        <li><span class="how-icon" aria-hidden="true">🚀</span><div><b>Rocket start</b> Hit accelerate just as the <b>1</b> fades. Too early and your wheels spin.</div></li>
+        <li><span class="how-icon" aria-hidden="true">✨</span><div><b>Drift</b> Hold <b class="k-drift">Shift</b><span class="key-only"> (or X)</span> while steering to slide. Sparks go blue, orange, then pink: let go for a mini-turbo.</div></li>
+        <li><span class="how-icon" aria-hidden="true">🤸</span><div><b>Tricks</b> Tap <b class="k-drift">Shift</b> as you leave a ramp for a boost when you land.</div></li>
+        <li><span class="how-icon" aria-hidden="true">💨</span><div><b>Slipstream</b> Tuck in right behind a rival for a second to be slung past.</div></li>
+        <li><span class="how-icon" aria-hidden="true">🌽</span><div><b>Golden corn</b> Each cob adds top speed (up to 10). Crash and you drop three.</div></li>
+        <li><span class="how-icon" aria-hidden="true">⏩</span><div><b>Boost pads</b> Drive over the glowing arrows for a burst of speed.</div></li>
+        <li><span class="how-icon" aria-hidden="true">🥚</span><div><b>Mystery eggs</b> Crack one for an item. The further back you are, the better your luck.</div></li>
+      </ul>
+      <div class="how-items" aria-label="Items">
+        <span>⚡ Boost</span><span>🥚 Egg shot</span><span>🚀 Missile</span><span>💣 Mine</span>
+        <span>🛡️ Shield</span><span>🌶️ Chilli</span><span>🐓 Rooster crow</span><span>🦙 Toy llama</span>
+      </div>
+      <button id="howClose" class="big-btn" type="button">Got it</button>
     </div>
   </div>
 
@@ -119,12 +144,21 @@
       <div id="lapTime">00.00</div>
       <div id="bestLap">Best —</div>
     </div>
+    <div id="cornCount" aria-label="Golden corn collected"><span aria-hidden="true">🌽</span> <b id="cornNum">0</b></div>
     <div id="itemSlot"><span id="itemIcon"></span></div>
     <canvas id="minimap" width="150" height="150"></canvas>
+    <div id="speedo"><b id="speedNum">0</b><span>km/h</span></div>
     <div id="wrongway" class="hidden">WRONG WAY!</div>
+    <div id="announce" class="hidden" role="status"></div>
+    <div id="toast" class="hidden" role="status"></div>
   </div>
 
   <div id="countdown" class="hidden"></div>
+  <div id="startTip" class="hidden">Hit accelerate as the <b>1</b> fades for a rocket start</div>
+
+  <!-- Egg-on-your-face overlay (when a thrown egg hits you) and a full-screen flash -->
+  <div id="splat" aria-hidden="true"></div>
+  <div id="flash" aria-hidden="true"></div>
 
   <!-- Speed-line overlay, shown while boosting -->
   <div id="speedLines" aria-hidden="true"></div>
@@ -147,6 +181,16 @@
     <div id="confetti" aria-hidden="true"></div>
   </div>
 
+  <!-- Pause menu -->
+  <div id="pause" class="screen hidden" role="dialog" aria-modal="true" aria-labelledby="pauseHeading">
+    <h2 id="pauseHeading" class="screen-heading">Paused</h2>
+    <div class="btn-row pause-btns">
+      <button id="resumeBtn" class="big-btn" type="button">Resume</button>
+      <button id="restartBtn" class="big-btn alt" type="button">Restart race</button>
+      <button id="quitBtn" class="big-btn alt" type="button">Quit to menu</button>
+    </div>
+  </div>
+
   <!-- On-screen controls for touch devices (shown only while racing) -->
   <div id="touch" class="hidden" aria-hidden="true">
     <div class="touch-steer">
@@ -158,11 +202,15 @@
         <button class="tbtn small" data-act="item" aria-label="Use item">🎁</button>
         <button class="tbtn small" data-act="brake" aria-label="Brake">▼</button>
       </div>
-      <button class="tbtn gas" data-act="gas" aria-label="Accelerate">▲</button>
+      <div class="drive-col">
+        <button class="tbtn drift" data-act="drift" aria-label="Hop and drift">DRIFT</button>
+        <button class="tbtn gas" data-act="gas" aria-label="Accelerate">▲</button>
+      </div>
     </div>
   </div>
 
-  <button id="muteBtn" title="Toggle sound">🔊</button>
+  <button id="muteBtn" title="Toggle sound" aria-label="Toggle sound">🔊</button>
+  <button id="pauseBtn" class="hidden" title="Pause" aria-label="Pause">⏸</button>
 
   <script type="module" src="js/main.js"></script>
 </body>

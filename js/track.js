@@ -209,6 +209,9 @@ export const track = {
   roadworks: null, // city: { startIdx, endIdx, coneSide, openOffset } lane closure
   crossings: [],   // tokyo: [{ i, j, pos }] where the loop crosses over itself
   specialBoxes: [], // [{ pos }] where the sparkly pink llama boxes sit
+  pads: [],        // [{ pos, idx, heading, r }] boost pads painted on the road
+  cornSpots: [],   // [{ pos }] where the golden corn pickups float
+  anim: [],        // [(dt, time) => void] little scenery animations (water, pads, clouds)
 };
 
 // Track registry. Each definition supplies its points, dimensions, a colour
@@ -216,27 +219,32 @@ export const track = {
 export const TRACKS = {
   farm: {
     id: 'farm', name: 'Funny Farm', roadHalf: 7, limit: 12, pts: FARM_PTS,
-    theme: { sky: 0x87ceeb, fog: [200, 460] },
+    theme: { sky: 0x6fb7ee, horizon: 0xcfe9f7, fog: [220, 520], sunPos: [80, 130, 40] },
+    kerb: [0xd8432f, 0xf7f2e6],
     build: buildFarm,
   },
   city: {
     id: 'city', name: 'Chickens in the City', roadHalf: 7, limit: 12, pts: CITY_PTS,
-    theme: { sky: 0x9fc4dd, fog: [230, 540] },
+    theme: { sky: 0x5f9fd6, horizon: 0xd3e6f2, fog: [250, 600], sunPos: [-90, 120, -60] },
+    kerb: [0xe23b3b, 0xf2f2f2],
     build: buildCity,
   },
   park: {
     id: 'park', name: 'Tongariro Park', roadHalf: 7.5, limit: 13, pts: PARK_PTS,
-    theme: { sky: 0x8fc1e3, fog: [340, 980] },
+    theme: { sky: 0x4a98e6, horizon: 0xe6ecee, fog: [360, 1000], sunPos: [110, 95, -70] },
+    kerb: [0xe8872a, 0xf3ead8],
     build: buildPark,
   },
   tokyo: {
     id: 'tokyo', name: 'Chickens in Tokyo', roadHalf: 7, limit: 12, pts: TOKYO_PTS,
-    theme: { sky: 0xa5c9e8, fog: [260, 700] },
+    theme: { sky: 0x7d8fe0, horizon: 0xffd2cf, fog: [280, 760], sunPos: [-110, 85, 70] },
+    kerb: [0xff4f9a, 0xf2f2f2],
     build: buildTokyo,
   },
   beach: {
     id: 'beach', name: 'Mt Maunganui Beach', roadHalf: 6.5, limit: 11.5, pts: BEACH_PTS,
-    theme: { sky: 0x8fd0ec, fog: [220, 520] },
+    theme: { sky: 0x3fa9e6, horizon: 0xd9f3f7, fog: [240, 580], sunPos: [100, 140, -30] },
+    kerb: [0x1f8ab0, 0xfdf6e3],
     build: buildBeach,
   },
 };
@@ -278,6 +286,9 @@ export function buildTrack(scene, id = 'farm') {
   buildSamples(def.pts);
   def.build(root);
   computeStartGrid();
+  buildKerbs(root, def.kerb);
+  buildBoostPads(root);
+  computeCornSpots();
 
   scene.add(root);
   return def;
@@ -298,7 +309,16 @@ function resetTrack() {
   track.roadworks = null;
   track.crossings = [];
   track.specialBoxes = [];
+  track.pads = [];
+  track.cornSpots = [];
+  track.anim = [];
   track.length = 0;
+}
+
+// Run the active track's little scenery animations (scrolling boost pads,
+// drifting clouds, rippling water). Called once a frame from the main loop.
+export function updateTrack(dt, time) {
+  for (const fn of track.anim) fn(dt, time);
 }
 
 function buildSamples(pts) {
@@ -516,10 +536,12 @@ function strut(group, a, b, w, mat, cast = true) {
 /* ------------------------- shared scenery ------------------------- */
 
 // The road ribbon. `followY` makes it climb the bridge; otherwise it is flat.
-function buildRoad(group, { color = 0x9c7b50, shade = true, shadeAmt = 0.16, shadeBase = 0.92, followY = false, seed = 7 } = {}) {
+function buildRoad(group, { color = 0x9c7b50, shade = true, shadeAmt = 0.16, shadeBase = 0.92, followY = false, seed = 7, kind = 'dirt' } = {}) {
   const half = track.roadHalf;
   const positions = [];
   const colors = [];
+  const uvs = [];
+  const vStep = (track.length / N) / (half * 2); // keep the grain roughly square
   const indices = [];
   const base = new THREE.Color(color);
   const rng = mulberry32(seed);
@@ -531,7 +553,8 @@ function buildRoad(group, { color = 0x9c7b50, shade = true, shadeAmt = 0.16, sha
     const ly = followY ? surfaceY(i % N, -half) + 0.04 : 0.015;
     const ry = followY ? surfaceY(i % N, half) + 0.04 : 0.015;
     positions.push(l.x, ly, l.z, r.x, ry, r.z);
-    const sh = shade ? (shadeBase + rng() * shadeAmt) : 1;
+    uvs.push(0, i * vStep, 1, i * vStep);
+    const sh = shade ? (shadeBase + rng() * shadeAmt * 0.5) : 1;
     const c = base.clone().multiplyScalar(sh);
     colors.push(c.r, c.g, c.b, c.r, c.g, c.b);
   }
@@ -542,9 +565,10 @@ function buildRoad(group, { color = 0x9c7b50, shade = true, shadeAmt = 0.16, sha
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
   geo.setIndex(indices);
   geo.computeVertexNormals();
-  const road = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true }));
+  const road = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, map: roadTexture(kind, seed) }));
   road.receiveShadow = true;
   group.add(road);
 }
@@ -646,7 +670,8 @@ function addRails(rails, dummy, a, b, ri, heights) {
 
 function buildClouds(group, count) {
   const rng = mulberry32(99);
-  const mat = lambert(0xffffff);
+  // Mostly self-lit so the undersides stay white instead of going storm-grey
+  const mat = new THREE.MeshLambertMaterial({ color: 0xd9dee6, emissive: 0xe6edf6, emissiveIntensity: 0.62 });
   for (let i = 0; i < count; i++) {
     const cloud = new THREE.Group();
     const n = 3 + Math.floor(rng() * 3);
@@ -657,8 +682,14 @@ function buildClouds(group, count) {
       puff.scale.y = 0.55;
       cloud.add(puff);
     }
-    cloud.position.set((rng() - 0.5) * 460, 58 + rng() * 28, (rng() - 0.5) * 460);
+    cloud.position.set((rng() - 0.5) * 700, 62 + rng() * 34, (rng() - 0.5) * 700);
+    cloud.scale.setScalar(1.3 + rng() * 1.2);
     group.add(cloud);
+    const speed = 1.2 + rng() * 1.6;
+    track.anim.push((dt) => {
+      cloud.position.x += speed * dt;
+      if (cloud.position.x > 380) cloud.position.x = -380;
+    });
   }
 }
 
@@ -712,6 +743,362 @@ function setBoxSpots(fractions) {
   track.boxSpotIdx = fractions.map((f) => Math.floor(f * N));
 }
 
+
+/* ------------------------- textures ------------------------- */
+
+// A soft mottled greyscale texture that is multiplied over a flat ground colour
+// so big planes of grass, sand and concrete stop looking like one solid slab.
+function groundTexture(repeatX, repeatY, seed = 5, contrast = 0.16, paving = false) {
+  const c = document.createElement('canvas');
+  c.width = 256; c.height = 256;
+  const ctx = c.getContext('2d');
+  const rng = mulberry32(seed);
+  ctx.fillStyle = '#f4f4f4';
+  ctx.fillRect(0, 0, 256, 256);
+  // Big soft blotches, drawn wrapped so the texture tiles without seams.
+  for (let i = 0; i < 90; i++) {
+    const x = rng() * 256, y = rng() * 256, r = 14 + rng() * 44;
+    const dark = rng() < 0.6;
+    const a = contrast * (0.35 + rng() * 0.65);
+    for (const ox of [-256, 0, 256]) {
+      for (const oy of [-256, 0, 256]) {
+        const g = ctx.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, r);
+        g.addColorStop(0, dark ? `rgba(60,70,40,${a})` : `rgba(255,255,255,${a})`);
+        g.addColorStop(1, 'rgba(128,128,128,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(x + ox - r, y + oy - r, r * 2, r * 2);
+      }
+    }
+  }
+  // Fine speckle for close-up grain.
+  for (let i = 0; i < 2600; i++) {
+    ctx.fillStyle = rng() < 0.5 ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.09)';
+    ctx.fillRect(rng() * 256, rng() * 256, 1 + rng() * 2, 1 + rng() * 2);
+  }
+  if (paving) {
+    // City paving: big slabs with dark joints and the odd lighter or darker slab
+    const n = 4, sz = 256 / n;
+    for (let gx = 0; gx < n; gx++) {
+      for (let gy = 0; gy < n; gy++) {
+        const v = rng();
+        if (v < 0.3) { ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.fillRect(gx * sz, gy * sz, sz, sz); }
+        else if (v > 0.75) { ctx.fillStyle = 'rgba(0,0,0,0.07)'; ctx.fillRect(gx * sz, gy * sz, sz, sz); }
+      }
+    }
+    ctx.strokeStyle = 'rgba(30,34,40,0.42)';
+    ctx.lineWidth = 3;
+    for (let k = 0; k <= n; k++) {
+      ctx.beginPath(); ctx.moveTo(k * sz, 0); ctx.lineTo(k * sz, 256); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, k * sz); ctx.lineTo(256, k * sz); ctx.stroke();
+    }
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(repeatX, repeatY);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return tex;
+}
+
+// A textured ground material: flat colour times the mottled texture above.
+function groundMat(color, repeatX, repeatY, seed, paving = false) {
+  return new THREE.MeshLambertMaterial({ color, map: groundTexture(repeatX, repeatY, seed, paving ? 0.08 : 0.16, paving) });
+}
+
+// The road surface grain. `kind` picks the feel: 'dirt' has scuffed wheel ruts,
+// 'asphalt' has faint darker tyre lines, 'sand' is soft and speckled.
+function roadTexture(kind, seed = 3) {
+  const c = document.createElement('canvas');
+  c.width = 256; c.height = 256;
+  const ctx = c.getContext('2d');
+  const rng = mulberry32(seed);
+  ctx.fillStyle = '#f2f2f2';
+  ctx.fillRect(0, 0, 256, 256);
+  // Tyre bands running along the direction of travel (the canvas y axis).
+  const bands = kind === 'asphalt' ? [[72, 26, 0.10], [184, 26, 0.10]]
+    : kind === 'dirt' ? [[70, 34, 0.16], [186, 34, 0.16]]
+    : [[70, 40, 0.07], [186, 40, 0.07]];
+  for (const [x, w, a] of bands) {
+    const g = ctx.createLinearGradient(x - w, 0, x + w, 0);
+    g.addColorStop(0, 'rgba(0,0,0,0)');
+    g.addColorStop(0.5, `rgba(20,14,8,${a})`);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x - w, 0, w * 2, 256);
+  }
+  // Soft darker shoulders so the road edge reads against the kerb.
+  for (const [x0, x1] of [[0, 26], [256, 230]]) {
+    const g = ctx.createLinearGradient(x0, 0, x1, 0);
+    g.addColorStop(0, 'rgba(0,0,0,0.16)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(Math.min(x0, x1), 0, 26, 256);
+  }
+  const n = kind === 'asphalt' ? 5200 : 3400;
+  for (let i = 0; i < n; i++) {
+    const a = kind === 'asphalt' ? 0.10 : 0.08;
+    ctx.fillStyle = rng() < 0.55 ? `rgba(0,0,0,${a})` : `rgba(255,255,255,${a + 0.03})`;
+    const sz = kind === 'asphalt' ? 1 + rng() : 1 + rng() * 2.4;
+    ctx.fillRect(rng() * 256, rng() * 256, sz, sz);
+  }
+  if (kind === 'dirt') {
+    // A few pebbles and scuffs.
+    for (let i = 0; i < 40; i++) {
+      ctx.fillStyle = `rgba(40,26,12,${0.08 + rng() * 0.1})`;
+      ctx.beginPath();
+      ctx.ellipse(rng() * 256, rng() * 256, 2 + rng() * 5, 1 + rng() * 3, rng() * 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  return tex;
+}
+
+// Water with soft wave streaks that slowly drift, so harbours, rivers and the
+// sea feel alive. The scroll is driven by updateTrack().
+function waterMat(color, repeatX, repeatY, driftX = 0.012, driftY = 0.02) {
+  const c = document.createElement('canvas');
+  c.width = 256; c.height = 256;
+  const ctx = c.getContext('2d');
+  const rng = mulberry32(77);
+  ctx.fillStyle = '#dcdcdc';
+  ctx.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 70; i++) {
+    const x = rng() * 256, y = rng() * 256, w = 18 + rng() * 46;
+    const light = rng() < 0.55;
+    ctx.strokeStyle = light ? `rgba(255,255,255,${0.25 + rng() * 0.35})` : `rgba(0,30,60,${0.08 + rng() * 0.1})`;
+    ctx.lineWidth = 1 + rng() * 2;
+    ctx.lineCap = 'round';
+    for (const ox of [-256, 0, 256]) {
+      ctx.beginPath();
+      ctx.moveTo(x + ox, y);
+      ctx.quadraticCurveTo(x + ox + w / 2, y - 3 - rng() * 2, x + ox + w, y);
+      ctx.stroke();
+    }
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(repeatX, repeatY);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  track.anim.push((dt) => {
+    tex.offset.x = (tex.offset.x + driftX * dt) % 1;
+    tex.offset.y = (tex.offset.y + driftY * dt) % 1;
+  });
+  return new THREE.MeshLambertMaterial({ color, map: tex });
+}
+
+/* ------------------------- kerbs, boost pads, corn ------------------------- */
+
+// True where the road is plain, flat and free of set pieces: no tunnel/barn
+// split, road works, jump ramps, bridge slopes or intersections, and not on the
+// starting grid. Boost pads and corn only ever go on these stretches.
+export function clearStretch(idx) {
+  idx = ((idx % N) + N) % N;
+  if (idx < 8 || idx > N - 30) return false;
+  if (Math.abs(surfaceY(idx, 0)) > 0.04) return false;
+  const sp = track.split;
+  if (sp && idxInRange(idx, sp.startIdx - 20, sp.endIdx + 6)) return false;
+  const rw = track.roadworks;
+  if (rw && idxInRange(idx, rw.startIdx - 14, rw.endIdx + 4)) return false;
+  const ramps = track.ramp ? [track.ramp, ...track.jumps] : track.jumps;
+  for (const jp of ramps) {
+    if (idxInRange(idx, jp.startIdx - 4, jp.lipIdx + 22)) return false;
+  }
+  for (const c of track.crossings) {
+    for (const k of [c.i, c.j]) {
+      if (Math.min(Math.abs(idx - k), N - Math.abs(idx - k)) < 12) return false;
+    }
+  }
+  for (const m of track.mud) {
+    if (track.samples[idx].pos.distanceTo(m.pos) < m.r + 4) return false;
+  }
+  return true;
+}
+
+// How sharply the road bends around a sample (radians of heading change over
+// roughly the next 14 samples). Near zero on a straight.
+function bendAt(idx) {
+  const a = track.samples[((idx - 4) % N + N) % N].tan;
+  const b = track.samples[(idx + 10) % N].tan;
+  let d = Math.atan2(b.x, b.z) - Math.atan2(a.x, a.z);
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return Math.abs(d);
+}
+
+// Striped racing kerbs along both road edges. They sit just outside the road
+// and count as tarmac, so clipping a kerb never slows you down.
+export const KERB_W = 1.1;
+function buildKerbs(group, colours) {
+  if (!colours) return;
+  const half = track.roadHalf;
+  const colA = new THREE.Color(colours[0]);
+  const colB = new THREE.Color(colours[1]);
+  const positions = [], cols = [], indices = [];
+  let v = 0;
+  for (const side of [-1, 1]) {
+    for (let i = 0; i < N; i++) {
+      const j = (i + 1) % N;
+      if (Math.abs(surfaceY(i, 0)) > 0.04 || Math.abs(surfaceY(j, 0)) > 0.04) continue;
+      if (track.split && idxInRange(i, track.split.startIdx - 2, track.split.endIdx + 2)) continue;
+      if (track.crossings.length && (nearTokyoCrossing(i) || nearTokyoCrossing(j))) continue;
+      const a = track.samples[i], b = track.samples[j];
+      const col = Math.floor(i / 2) % 2 ? colA : colB;
+      const lats = [side * half, side * (half + KERB_W)];
+      for (const s of [a, b]) {
+        for (const lat of lats) {
+          positions.push(s.pos.x + s.normal.x * lat, 0.05, s.pos.z + s.normal.z * lat);
+          cols.push(col.r, col.g, col.b);
+        }
+      }
+      if (side === 1) indices.push(v, v + 1, v + 2, v + 1, v + 3, v + 2);
+      else indices.push(v, v + 2, v + 1, v + 1, v + 2, v + 3);
+      v += 4;
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  const kerb = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+  kerb.receiveShadow = true;
+  group.add(kerb);
+}
+
+// The glowing chevron texture shared by every boost pad on a track.
+function makePadTexture() {
+  const c = document.createElement('canvas');
+  c.width = 128; c.height = 128;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = 'rgba(30, 14, 60, 0.55)';
+  ctx.fillRect(0, 0, 128, 128);
+  for (let k = 0; k < 2; k++) {
+    const y = k * 64;
+    const g = ctx.createLinearGradient(0, y, 0, y + 64);
+    g.addColorStop(0, '#fff06a');
+    g.addColorStop(1, '#ff7a1a');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(8, y + 6); ctx.lineTo(64, y + 44); ctx.lineTo(120, y + 6);
+    ctx.lineTo(120, y + 26); ctx.lineTo(64, y + 62); ctx.lineTo(8, y + 26);
+    ctx.closePath();
+    ctx.fill();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+// Boost pads: glowing arrows painted on the straightest clear bits of road.
+// Drive over one for a burst of speed. They are placed automatically, so every
+// track (and any future track) gets a fair spread without hand-tuning.
+function buildBoostPads(group) {
+  const want = 3;
+  const cands = [];
+  for (let i = 0; i < N; i++) {
+    let ok = true;
+    for (let k = -4; k <= 12 && ok; k++) ok = clearStretch(i + k);
+    if (!ok) continue;
+    if (track.boxSpotIdx.some((b) => Math.min(Math.abs(i - b), N - Math.abs(i - b)) < 22)) continue;
+    cands.push({ i, bend: bendAt(i) });
+  }
+  cands.sort((a, b) => a.bend - b.bend);
+  const chosen = [];
+  for (const c of cands) {
+    if (chosen.length >= want) break;
+    if (c.bend > 0.5) break;
+    if (chosen.some((o) => Math.min(Math.abs(c.i - o), N - Math.abs(c.i - o)) < N / 6)) continue;
+    chosen.push(c.i);
+  }
+  if (!chosen.length) return;
+  chosen.sort((a, b) => a - b);
+
+  const tex = makePadTexture();
+  tex.repeat.set(1, 1.5);
+  const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.96 });
+  mat.color.setRGB(1.7, 1.5, 1.3); // over-bright so the arrows bloom
+  const geo = new THREE.PlaneGeometry(5.4, 7.5);
+  const lats = [-2.6, 2.6, 0];
+  chosen.forEach((idx, n) => {
+    const s = track.samples[idx];
+    const lat = lats[n % lats.length];
+    const pos = latPoint(s, lat);
+    const heading = Math.atan2(s.tan.x, s.tan.z);
+    const holder = new THREE.Group();
+    holder.position.set(pos.x, 0.075, pos.z);
+    holder.rotation.y = heading;
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.rotation.set(-Math.PI / 2, 0, Math.PI);
+    holder.add(mesh);
+    group.add(holder);
+    track.pads.push({ pos, idx, heading, r: 3.3 });
+  });
+  track.anim.push((dt) => { tex.offset.y = (tex.offset.y + dt * 1.8) % 1; });
+}
+
+// Golden corn: short lines of pickups laid along the plain stretches, swapping
+// sides so there is always a little racing-line decision to make.
+function computeCornSpots() {
+  const lats = [-3.6, 3.6, 0, 3.6, -3.6, 0];
+  const groups = 12;
+  const near = (a, b, gap) => Math.min(Math.abs(a - b), N - Math.abs(a - b)) < gap;
+  const used = [];
+  for (let g = 0; g < groups; g++) {
+    const base = Math.floor(((g + 0.45) / groups) * N);
+    const lat = lats[g % lats.length];
+    // Slide forward a little if the ideal spot is taken by a set piece
+    for (let shift = 0; shift < N / groups - 16; shift += 4) {
+      const start = (base + shift) % N;
+      const mid = (start + 6) % N;
+      const idxs = [0, 3, 6, 9, 12].map((o) => (start + o) % N);
+      if (!idxs.every((i) => clearStretch(i))) continue;
+      if (track.boxSpotIdx.some((b) => near(mid, b, 12))) continue;
+      if (track.pads.some((p) => near(mid, p.idx, 14))) continue;
+      if (used.some((u) => near(mid, u, 26))) continue;
+      used.push(mid);
+      for (const i of idxs) {
+        const pos = latPoint(track.samples[i], lat);
+        pos.y = 0;
+        track.cornSpots.push({ pos });
+      }
+      break;
+    }
+  }
+}
+
+// Sprinkle little instanced details (grass tufts, flowers, pebbles) over the
+// ground, keeping well clear of the road.
+function scatter(group, { count, geo, color, seed, spread = 300, minDist = 15, scale = [0.7, 1.5], y = 0 }) {
+  const rng = mulberry32(seed);
+  const mesh = new THREE.InstancedMesh(geo, lambert(color), count);
+  const dummy = new THREE.Object3D();
+  const p = new THREE.Vector3();
+  let placed = 0, tries = 0;
+  while (placed < count && tries < count * 12) {
+    tries++;
+    p.set((rng() - 0.5) * spread, 0, (rng() - 0.5) * spread);
+    let minD = Infinity;
+    for (let i = 0; i < N; i += 3) minD = Math.min(minD, p.distanceToSquared(track.samples[i].pos));
+    if (minD < minDist * minDist) continue;
+    const sc = scale[0] + rng() * (scale[1] - scale[0]);
+    dummy.position.set(p.x, y * sc, p.z);
+    dummy.rotation.set(0, rng() * Math.PI * 2, 0);
+    dummy.scale.setScalar(sc);
+    dummy.updateMatrix();
+    mesh.setMatrixAt(placed++, dummy.matrix);
+  }
+  mesh.count = placed;
+  group.add(mesh);
+  return mesh;
+}
+
 /* ===================================================================== */
 /* ===========================  FUNNY FARM  ============================ */
 /* ===================================================================== */
@@ -720,7 +1107,7 @@ function buildFarm(group) {
   detectStraight();
   computeRamp();
   buildFarmGround(group);
-  buildRoad(group); // dirt, flat
+  buildRoad(group, { color: 0xb08a5a, kind: 'dirt' }); // dirt, flat
   buildStartLine(group);
   buildRoadside(group, { offset: 13, postW: 0.25, postH: 1.1, rails: [0.45, 0.9], color: 0xf5f0e6 });
   buildSplit(group);
@@ -729,7 +1116,8 @@ function buildFarm(group) {
   buildMud(group);
   buildBarn(group);
   buildTrees(group);
-  buildClouds(group, 7);
+  buildFarmDetails(group);
+  buildClouds(group, 9);
   buildBanner(group, 'CHICKEN KART', '#d8432f');
   setBoxSpots([0.07, 0.40, 0.60, 0.88]);
 }
@@ -778,7 +1166,7 @@ function computeRamp() {
 }
 
 function buildFarmGround(group) {
-  const mat = lambert(0x6db33f);
+  const mat = lambert(0x74bd45);
   let geo;
   if (track.tunnel) {
     // A big square with the tunnel lane cut out so the road can dip into earth.
@@ -804,8 +1192,10 @@ function buildFarmGround(group) {
     hole.closePath();
     shape.holes.push(hole);
     geo = new THREE.ShapeGeometry(shape);
+    mat.map = groundTexture(1 / 36, 1 / 36, 5); // shape UVs are in world units
   } else {
     geo = new THREE.PlaneGeometry(700, 700);
+    mat.map = groundTexture(700 / 36, 700 / 36, 5);
   }
   const ground = new THREE.Mesh(geo, mat);
   ground.rotation.x = -Math.PI / 2;
@@ -1018,6 +1408,35 @@ function buildBarn(group) {
   group.add(barn);
 }
 
+// Rolling hills on the horizon, plus grass tufts and wildflowers in the
+// paddocks, so the farm feels like a place rather than a flat green sheet.
+function buildFarmDetails(group) {
+  const rng = mulberry32(314);
+  // A wider plain beneath the paddock so the land runs out to the hills
+  const plain = new THREE.Mesh(new THREE.PlaneGeometry(1800, 1800), lambert(0x6cb341));
+  plain.rotation.x = -Math.PI / 2;
+  plain.position.y = -0.12;
+  group.add(plain);
+  const hillMats = [lambert(0x5aa63c), lambert(0x4f9a3a), lambert(0x67b146)];
+  for (let i = 0; i < 16; i++) {
+    const a = (i / 16) * Math.PI * 2 + rng() * 0.2;
+    const r = 330 + rng() * 60;
+    const hill = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 10), hillMats[i % 3]);
+    hill.scale.set(70 + rng() * 60, 22 + rng() * 26, 60 + rng() * 50);
+    hill.position.set(Math.cos(a) * r, -6, Math.sin(a) * r);
+    group.add(hill);
+  }
+  const tuft = new THREE.ConeGeometry(0.34, 0.85, 5);
+  tuft.translate(0, 0.42, 0);
+  scatter(group, { count: 420, geo: tuft, color: 0x4f9e36, seed: 12, spread: 420, minDist: 14.5 });
+  scatter(group, { count: 260, geo: tuft, color: 0x8ccc4e, seed: 13, spread: 420, minDist: 14.5, scale: [0.5, 1.1] });
+  const flower = new THREE.SphereGeometry(0.2, 6, 5);
+  flower.translate(0, 0.42, 0);
+  scatter(group, { count: 110, geo: flower, color: 0xfff3a8, seed: 14, spread: 380, minDist: 14.5 });
+  scatter(group, { count: 90, geo: flower, color: 0xff8fc0, seed: 15, spread: 380, minDist: 14.5 });
+  scatter(group, { count: 70, geo: flower, color: 0xffffff, seed: 16, spread: 380, minDist: 14.5 });
+}
+
 function buildTrees(group) {
   const rng = mulberry32(42);
   const trunkGeo = new THREE.CylinderGeometry(0.45, 0.6, 3, 8);
@@ -1063,7 +1482,7 @@ function buildCity(group) {
   computeRoadworks();
   buildHarbour(group);
   buildCityGround(group);
-  buildRoad(group, { color: 0x3b4046, shadeAmt: 0.07, followY: true, seed: 11 });
+  buildRoad(group, { color: 0x4a5058, shadeAmt: 0.07, followY: true, seed: 11, kind: 'asphalt' });
   buildRoadStrip(group, 0, 0.5, 0xf4d03f, true);                 // centre line
   buildRoadStrip(group, -(track.roadHalf - 0.7), 0.35, 0xf2f2f2, true); // edge lines
   buildRoadStrip(group, track.roadHalf - 0.7, 0.35, 0xf2f2f2, true);
@@ -1127,7 +1546,7 @@ function computeBridge() {
 function buildHarbour(group) {
   const water = new THREE.Mesh(
     new THREE.PlaneGeometry(1500, 1500),
-    new THREE.MeshLambertMaterial({ color: 0x2f6f9c })
+    waterMat(0x3d86b8, 46, 46)
   );
   water.rotation.x = -Math.PI / 2;
   water.position.y = -2.4;
@@ -1135,7 +1554,7 @@ function buildHarbour(group) {
 }
 
 function buildCityGround(group) {
-  const mat = lambert(0x6c7178); // city concrete/asphalt grey-green
+  const mat = groundMat(0x8b9199, 900 / 44, (350 + COAST) / 44, 21, true); // city paving
   // South land (the city) covers everything up to the coastline.
   const south = new THREE.Mesh(new THREE.PlaneGeometry(900, 350 + COAST), mat);
   south.rotation.x = -Math.PI / 2;
@@ -1546,7 +1965,7 @@ const VOLCANOES = [
 function buildPark(group) {
   computeParkJumps();
   buildParkGround(group);
-  buildRoad(group, { color: 0x8a6038, shadeAmt: 0.22, shadeBase: 0.86, followY: true, seed: 23 });
+  buildRoad(group, { color: 0x9a6c40, shadeAmt: 0.22, shadeBase: 0.9, followY: true, seed: 23, kind: 'dirt' });
   buildStartLine(group);
   buildRoadside(group, { offset: 13, postW: 0.28, postH: 1.0, rails: [0.5], color: 0x6e4a28, skipElevated: true });
   buildParkJumps(group);
@@ -1580,7 +1999,7 @@ function computeParkJumps() {
 // Volcanic ground: a tussocky alpine-desert base with darker scorched lava
 // fields scattered around the infield and surrounds.
 function buildParkGround(group) {
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(1400, 1400), lambert(0x9c8a52));
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(1400, 1400), groundMat(0xbfa95c, 1400 / 44, 1400 / 44, 33));
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = -0.02;
   ground.receiveShadow = true;
@@ -1813,7 +2232,7 @@ function buildBeach(group) {
   computeBeachJumps();
   buildBeachOcean(group);
   buildBeachGround(group);
-  buildRoad(group, { color: 0xc8b07e, shadeAmt: 0.14, shadeBase: 0.9, seed: 31 }); // firm wet sand
+  buildRoad(group, { color: 0xb79a6c, shadeAmt: 0.14, shadeBase: 0.93, seed: 31, kind: 'sand' }); // firm wet sand
   buildStartLine(group);
   buildRoadside(group, { offset: 11.5, postW: 0.22, postH: 0.9, rails: [0.5], color: 0xe8dcc0 });
   buildBeachJumps(group);
@@ -1857,7 +2276,7 @@ function buildBeachOcean(group) {
   // Far deep water: one big plane behind everything so there are no gaps.
   const deep = new THREE.Mesh(
     new THREE.PlaneGeometry(1600, 1600),
-    lambert(0x215a86)
+    waterMat(0x2a6c9c, 44, 44, 0.02, 0.008)
   );
   deep.rotation.x = -Math.PI / 2;
   deep.position.set(SEA_EDGE + 800, -0.7, 0); // near edge at x = SEA_EDGE
@@ -1888,7 +2307,7 @@ function buildBeachOcean(group) {
 // everything seaward of that line is open water.
 function buildBeachGround(group) {
   const W = 1500;
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(W, 1500), lambert(0xd6c08a));
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(W, 1500), groundMat(0xe2cc94, W / 40, 1500 / 40, 44));
   ground.rotation.x = -Math.PI / 2;
   // Seaward edge sits exactly on the waterline; the rest stretches inland (-x).
   ground.position.set(SEA_EDGE - W / 2, -0.02, 0);
@@ -2219,7 +2638,7 @@ function buildTokyo(group) {
   computeTokyoJumps();
   computeTokyoCrossings();
   buildTokyoGround(group);
-  buildRoad(group, { color: 0x41454c, shadeAmt: 0.07, followY: true, seed: 17 });
+  buildRoad(group, { color: 0x4d525b, shadeAmt: 0.07, followY: true, seed: 17, kind: 'asphalt' });
   buildRoadStrip(group, 0, 0.5, 0xf4d03f, true);                        // centre line
   buildRoadStrip(group, -(track.roadHalf - 0.7), 0.35, 0xf2f2f2, true); // edge lines
   buildRoadStrip(group, track.roadHalf - 0.7, 0.35, 0xf2f2f2, true);
@@ -2371,7 +2790,7 @@ function buildTrafficSignal(group, pos, lookTarget) {
 /* ------------------------- ground, river, jumps ------------------------- */
 
 function buildTokyoGround(group) {
-  const asphalt = lambert(0x6e747c);
+  const asphalt = groundMat(0x8a8f9a, 1500 / 44, (750 - RIVER_EDGE) / 44, 55, true);
 
   // City ground north of the river.
   const cityH = 750 - RIVER_EDGE;
@@ -2382,7 +2801,7 @@ function buildTokyoGround(group) {
   group.add(city);
 
   // The river along the south edge, and the far bank beyond it.
-  const river = new THREE.Mesh(new THREE.PlaneGeometry(1500, 210), lambert(0x2a5f8a));
+  const river = new THREE.Mesh(new THREE.PlaneGeometry(1500, 210), waterMat(0x3478a8, 50, 7, 0.03, 0.0));
   river.rotation.x = -Math.PI / 2;
   river.position.set(0, -1.4, RIVER_EDGE - 105);
   group.add(river);
