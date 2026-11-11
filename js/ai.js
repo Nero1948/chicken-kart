@@ -60,7 +60,7 @@ export class AIDriver {
     const s = track.samples[ti];
     // Normally weave a little; on the split, commit to a lane; through the road
     // works, merge into the open lane so they steer around the cones.
-    let lateral = Math.sin(this.time * 0.5 + this.wobble) * 2.4;
+    let lateral = Math.sin(this.time * 0.5 + this.wobble) * 3.0;
     if (inSplitZone(ti)) lateral = this.lanePref * track.split.laneOffset;
     else if (inRoadworks(ti)) lateral = track.roadworks.openOffset;
     const tx = s.pos.x + s.normal.x * lateral;

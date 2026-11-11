@@ -108,7 +108,7 @@ export class ItemManager {
 
     for (const idx of track.boxSpotIdx) {
       const s = track.samples[idx];
-      for (const off of [-4, 0, 4]) {
+      for (const off of [-5, 0, 5]) {
         const pos = s.pos.clone().addScaledVector(s.normal, off);
         pos.y = surfaceY(idx, off) + 1.4;
         addBox(pos, false);

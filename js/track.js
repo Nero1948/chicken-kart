@@ -191,8 +191,8 @@ export const track = {
   id: null,
   name: '',
   theme: null,
-  roadHalf: 7,    // half width of the road
-  limit: 12,      // how far from the centre line a kart may go before the fence stops it
+  roadHalf: 8.5,  // half width of the road
+  limit: 13.5,     // how far from the centre line a kart may go before the fence stops it
   samples: [],    // { pos, tan, normal } around the loop
   length: 0,
   bales: [],      // { pos, r } solid round obstacles
@@ -218,31 +218,31 @@ export const track = {
 // theme for the sky/fog, and a `build` function that lays down its scenery.
 export const TRACKS = {
   farm: {
-    id: 'farm', name: 'Funny Farm', roadHalf: 7, limit: 12, pts: FARM_PTS,
+    id: 'farm', name: 'Funny Farm', roadHalf: 8.5, limit: 13.5, pts: FARM_PTS,
     theme: { sky: 0x6fb7ee, horizon: 0xcfe9f7, fog: [220, 520], sunPos: [80, 130, 40] },
     kerb: [0xd8432f, 0xf7f2e6],
     build: buildFarm,
   },
   city: {
-    id: 'city', name: 'Chickens in the City', roadHalf: 7, limit: 12, pts: CITY_PTS,
+    id: 'city', name: 'Chickens in the City', roadHalf: 8.5, limit: 13.5, pts: CITY_PTS,
     theme: { sky: 0x5f9fd6, horizon: 0xd3e6f2, fog: [250, 600], sunPos: [-90, 120, -60] },
     kerb: [0xe23b3b, 0xf2f2f2],
     build: buildCity,
   },
   park: {
-    id: 'park', name: 'Tongariro Park', roadHalf: 7.5, limit: 13, pts: PARK_PTS,
+    id: 'park', name: 'Tongariro Park', roadHalf: 9, limit: 14.5, pts: PARK_PTS,
     theme: { sky: 0x4a98e6, horizon: 0xe6ecee, fog: [360, 1000], sunPos: [110, 95, -70] },
     kerb: [0xe8872a, 0xf3ead8],
     build: buildPark,
   },
   tokyo: {
-    id: 'tokyo', name: 'Chickens in Tokyo', roadHalf: 7, limit: 12, pts: TOKYO_PTS,
+    id: 'tokyo', name: 'Chickens in Tokyo', roadHalf: 8.5, limit: 13.5, pts: TOKYO_PTS,
     theme: { sky: 0x7d8fe0, horizon: 0xffd2cf, fog: [280, 760], sunPos: [-110, 85, 70] },
     kerb: [0xff4f9a, 0xf2f2f2],
     build: buildTokyo,
   },
   beach: {
-    id: 'beach', name: 'Mt Maunganui Beach', roadHalf: 6.5, limit: 11.5, pts: BEACH_PTS,
+    id: 'beach', name: 'Mt Maunganui Beach', roadHalf: 8, limit: 13, pts: BEACH_PTS,
     theme: { sky: 0x3fa9e6, horizon: 0xd9f3f7, fog: [240, 580], sunPos: [100, 140, -30] },
     kerb: [0x1f8ab0, 0xfdf6e3],
     build: buildBeach,
@@ -417,8 +417,8 @@ export function inBarn(pos, idx) {
 
 // How far from the centre line a kart may sit inside a covered lane before the
 // solid outer wall stops it.
-export const TUNNEL_WALL_OUTER = -6.4; // left lane (negative lateral)
-export const BARN_WALL_OUTER = 6.4;    // right lane (positive lateral)
+export const TUNNEL_WALL_OUTER = -7.9; // left lane (negative lateral)
+export const BARN_WALL_OUTER = 7.9;    // right lane (positive lateral)
 
 export function tunnelLane(idx) {
   const tn = track.tunnel;
@@ -732,8 +732,8 @@ function computeStartGrid() {
     const col = i % 2;
     const idx = (N - 12 - row * 6 + N) % N;
     const s = track.samples[idx];
-    const pos = s.pos.clone().addScaledVector(s.normal, col === 0 ? -3 : 3);
-    pos.y = surfaceY(idx, col === 0 ? -3 : 3);
+    const pos = s.pos.clone().addScaledVector(s.normal, col === 0 ? -3.6 : 3.6);
+    pos.y = surfaceY(idx, col === 0 ? -3.6 : 3.6);
     const heading = Math.atan2(s.tan.x, s.tan.z);
     track.startGrid.push({ pos, heading, idx });
   }
@@ -1025,7 +1025,7 @@ function buildBoostPads(group) {
   const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.96 });
   mat.color.setRGB(1.7, 1.5, 1.3); // over-bright so the arrows bloom
   const geo = new THREE.PlaneGeometry(5.4, 7.5);
-  const lats = [-2.6, 2.6, 0];
+  const lats = [-3.2, 3.2, 0];
   chosen.forEach((idx, n) => {
     const s = track.samples[idx];
     const lat = lats[n % lats.length];
@@ -1046,7 +1046,7 @@ function buildBoostPads(group) {
 // Golden corn: short lines of pickups laid along the plain stretches, swapping
 // sides so there is always a little racing-line decision to make.
 function computeCornSpots() {
-  const lats = [-3.6, 3.6, 0, 3.6, -3.6, 0];
+  const lats = [-4.4, 4.4, 0, 4.4, -4.4, 0];
   const groups = 12;
   const near = (a, b, gap) => Math.min(Math.abs(a - b), N - Math.abs(a - b)) < gap;
   const used = [];
@@ -1109,7 +1109,7 @@ function buildFarm(group) {
   buildFarmGround(group);
   buildRoad(group, { color: 0xb08a5a, kind: 'dirt' }); // dirt, flat
   buildStartLine(group);
-  buildRoadside(group, { offset: 13, postW: 0.25, postH: 1.1, rails: [0.45, 0.9], color: 0xf5f0e6 });
+  buildRoadside(group, { offset: 14.5, postW: 0.25, postH: 1.1, rails: [0.45, 0.9], color: 0xf5f0e6 });
   buildSplit(group);
   buildRamp(group);
   buildBales(group);
@@ -1149,7 +1149,7 @@ function detectStraight() {
   const pad = Math.max(4, Math.floor(best.len * 0.18));
   const startIdx = best.start + pad;
   const endIdx = best.end - pad;
-  track.split = { startIdx, endIdx, laneOffset: 3.4 };
+  track.split = { startIdx, endIdx, laneOffset: 4.2 };
   track.barnZone = { startIdx, endIdx };
   const tunnelEnd = startIdx + Math.floor((endIdx - startIdx) * 0.55);
   track.tunnel = { startIdx, endIdx: tunnelEnd, depth: 6 };
@@ -1181,7 +1181,7 @@ function buildFarmGround(group) {
     const outer = [];
     for (const s of samples) {
       const pi = latPoint(s, -0.5);
-      const po = latPoint(s, -7.4);
+      const po = latPoint(s, -8.9);
       inner.push(new THREE.Vector2(pi.x, -pi.z));
       outer.push(new THREE.Vector2(po.x, -po.z));
     }
@@ -1216,10 +1216,10 @@ function buildSplit(parent) {
   buildTunnel(group);
 
   const HB = 5.6;
-  buildWall(group, samples, 7.0, HB, 0.4, red);
-  buildRoof(group, samples, 0.4, 7.0, HB, roofRed);
-  buildGable(group, samples[0], 0.4, 7.0, HB, red);
-  buildGable(group, samples[samples.length - 1], 0.4, 7.0, HB, red);
+  buildWall(group, samples, 8.5, HB, 0.4, red);
+  buildRoof(group, samples, 0.4, 8.5, HB, roofRed);
+  buildGable(group, samples[0], 0.4, 8.5, HB, red);
+  buildGable(group, samples[samples.length - 1], 0.4, 8.5, HB, red);
 
   buildWall(group, samples, 0, 2.6, 0.7, wood);
   for (const s of samples) track.bales.push({ pos: latPoint(s, 0), r: 1.2 });
@@ -1232,12 +1232,12 @@ function buildTunnel(group) {
   const dirt = lambert(0x6b4f34);
   const dark = lambert(0x3a2f26);
   const floorMat = lambert(0x8d8d8d);
-  const floorY = (idx) => surfaceY(idx, -3.5);
+  const floorY = (idx) => surfaceY(idx, -4.2);
 
-  buildSloped(group, idxs, -7.0, -0.4, floorY, floorMat, true);
-  buildTrenchWall(group, idxs, -7.2, 0.6, dirt);
+  buildSloped(group, idxs, -8.5, -0.4, floorY, floorMat, true);
+  buildTrenchWall(group, idxs, -8.7, 0.6, dirt);
   buildTrenchWall(group, idxs, -0.4, 0.6, dirt);
-  buildSloped(group, idxs, -7.0, -0.4, (idx) => {
+  buildSloped(group, idxs, -8.5, -0.4, (idx) => {
     const fy = floorY(idx);
     return fy <= -3.3 ? fy + 3 : null;
   }, dark, false);
@@ -1428,13 +1428,13 @@ function buildFarmDetails(group) {
   }
   const tuft = new THREE.ConeGeometry(0.34, 0.85, 5);
   tuft.translate(0, 0.42, 0);
-  scatter(group, { count: 420, geo: tuft, color: 0x4f9e36, seed: 12, spread: 420, minDist: 14.5 });
-  scatter(group, { count: 260, geo: tuft, color: 0x8ccc4e, seed: 13, spread: 420, minDist: 14.5, scale: [0.5, 1.1] });
+  scatter(group, { count: 420, geo: tuft, color: 0x4f9e36, seed: 12, spread: 420, minDist: 16 });
+  scatter(group, { count: 260, geo: tuft, color: 0x8ccc4e, seed: 13, spread: 420, minDist: 16, scale: [0.5, 1.1] });
   const flower = new THREE.SphereGeometry(0.2, 6, 5);
   flower.translate(0, 0.42, 0);
-  scatter(group, { count: 110, geo: flower, color: 0xfff3a8, seed: 14, spread: 380, minDist: 14.5 });
-  scatter(group, { count: 90, geo: flower, color: 0xff8fc0, seed: 15, spread: 380, minDist: 14.5 });
-  scatter(group, { count: 70, geo: flower, color: 0xffffff, seed: 16, spread: 380, minDist: 14.5 });
+  scatter(group, { count: 110, geo: flower, color: 0xfff3a8, seed: 14, spread: 380, minDist: 16 });
+  scatter(group, { count: 90, geo: flower, color: 0xff8fc0, seed: 15, spread: 380, minDist: 16 });
+  scatter(group, { count: 70, geo: flower, color: 0xffffff, seed: 16, spread: 380, minDist: 16 });
 }
 
 function buildTrees(group) {
@@ -1455,7 +1455,7 @@ function buildTrees(group) {
     for (let i = 0; i < N; i += 4) {
       minD = Math.min(minD, p.distanceTo(track.samples[i].pos));
     }
-    if (minD < 18 || p.distanceTo(new THREE.Vector3(5, 0, -8)) < 16) continue;
+    if (minD < 19.5 || p.distanceTo(new THREE.Vector3(5, 0, -8)) < 16) continue;
     const tree = new THREE.Group();
     const trunk = new THREE.Mesh(trunkGeo, trunkMat);
     trunk.position.y = 1.5;
@@ -1487,7 +1487,7 @@ function buildCity(group) {
   buildRoadStrip(group, -(track.roadHalf - 0.7), 0.35, 0xf2f2f2, true); // edge lines
   buildRoadStrip(group, track.roadHalf - 0.7, 0.35, 0xf2f2f2, true);
   buildStartLine(group);
-  buildRoadside(group, { offset: 11, postW: 0.22, postH: 0.9, rails: [0.62], color: 0x9aa1a6, skipElevated: true });
+  buildRoadside(group, { offset: 12.5, postW: 0.22, postH: 0.9, rails: [0.62], color: 0x9aa1a6, skipElevated: true });
   buildBridge(group);
   buildRoadworks(group);
   buildSkyTower(group);
@@ -1521,7 +1521,7 @@ function computeRoadworks() {
   if (best.len < 14) { track.roadworks = null; return; }
   const pad = Math.floor(best.len * 0.16);
   // coneSide +1 closes the outer (right) lane; openOffset steers onto the inside.
-  track.roadworks = { startIdx: best.s + pad, endIdx: best.e - pad, coneSide: 1, openOffset: -3.6 };
+  track.roadworks = { startIdx: best.s + pad, endIdx: best.e - pad, coneSide: 1, openOffset: -4.4 };
 }
 
 // Find the top straight (samples north of z=50) and make it the bridge.
@@ -1588,11 +1588,11 @@ function buildBridge(group) {
   const pierMat = lambert(0x8b9298);
 
   // Wide deck slab that carries the road and its shoulders over the water.
-  buildSloped(g, idxs, -12, 12, (idx) => surfaceY(idx, 0) - 0.25, deckMat, true);
+  buildSloped(g, idxs, -13.5, 13.5, (idx) => surfaceY(idx, 0) - 0.25, deckMat, true);
 
   // Side railings along both edges of the deck.
-  buildDeckRail(g, idxs, -11.6, 1.1, rail);
-  buildDeckRail(g, idxs, 11.6, 1.1, rail);
+  buildDeckRail(g, idxs, -13.1, 1.1, rail);
+  buildDeckRail(g, idxs, 13.1, 1.1, rail);
 
   // Support piers wherever the deck is raised, so the approaches and the span
   // over the harbour are both held up (on land the pier foot is just buried).
@@ -1603,8 +1603,8 @@ function buildBridge(group) {
   }
 
   // The two steel arches (the "coat hanger"), their hangers and cross-bracing.
-  const archL = archPoints(idxs, -9);
-  const archR = archPoints(idxs, 9);
+  const archL = archPoints(idxs, -10.5);
+  const archR = archPoints(idxs, 10.5);
   buildArchStruts(g, archL, steel);
   buildArchStruts(g, archR, steel);
   buildHangers(g, archL, steel);
@@ -1706,7 +1706,7 @@ function buildRoadworks(group) {
     if (i < taper) t = i / taper;                       // taper in
     else if (i > n - 1 - taper) t = (n - 1 - i) / taper; // taper out
     else t = 1;                                          // along the divider
-    return rw.coneSide * (6.4 - t * 5.8); // 6.4 at the edge -> 0.6 at the divider
+    return rw.coneSide * (7.9 - t * 7.3); // 7.9 at the edge -> 0.6 at the divider
   };
 
   for (let i = 0; i < n; i += 2) {
@@ -1730,7 +1730,7 @@ function buildRoadworks(group) {
 
   // Gravel slow patch in the middle of the closed lane.
   const midS = track.samples[idxs[Math.floor(n / 2)]];
-  const gravelPos = latPoint(midS, rw.coneSide * 4.2);
+  const gravelPos = latPoint(midS, rw.coneSide * 5.0);
   const gravel = new THREE.Mesh(new THREE.CircleGeometry(4.0, 20), lambert(0x6b6256));
   gravel.rotation.x = -Math.PI / 2;
   gravel.position.set(gravelPos.x, surfaceY(idxs[Math.floor(n / 2)], 0) + 0.03, gravelPos.z);
@@ -1738,16 +1738,16 @@ function buildRoadworks(group) {
   track.mud.push({ pos: new THREE.Vector3(gravelPos.x, 0, gravelPos.z), r: 4.0 });
 
   // Striped barrier board where the closure begins, facing oncoming karts.
-  buildBarrierBoard(g, idxs[Math.max(0, taper - 2)], rw.coneSide * 4.0);
+  buildBarrierBoard(g, idxs[Math.max(0, taper - 2)], rw.coneSide * 4.8);
 
   // A couple of works props on the closed shoulder for flavour (off the road).
   const propS = track.samples[idxs[Math.floor(n * 0.5)]];
-  const dirtPos = latPoint(propS, rw.coneSide * 8.5);
+  const dirtPos = latPoint(propS, rw.coneSide * 10);
   const dirt = new THREE.Mesh(new THREE.ConeGeometry(1.6, 1.6, 10), lambert(0x7a6a4f));
   dirt.position.set(dirtPos.x, 0.8, dirtPos.z);
   dirt.castShadow = true;
   g.add(dirt);
-  const hutPos = latPoint(track.samples[idxs[Math.floor(n * 0.35)]], rw.coneSide * 9.2);
+  const hutPos = latPoint(track.samples[idxs[Math.floor(n * 0.35)]], rw.coneSide * 10.7);
   const hut = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.6, 2.4), lambert(0xe0a83c));
   hut.position.set(hutPos.x, 1.3, hutPos.z);
   hut.castShadow = true;
@@ -1900,7 +1900,7 @@ function buildBuildings(group) {
     const x = (rng() - 0.5) * 300;
     const z = -95 + rng() * 150; // city land, south of the coastline
     if (z > COAST - 8) continue;
-    if (!clearOfTrack(x, z, 13)) continue;
+    if (!clearOfTrack(x, z, 14.5)) continue;
     if (new THREE.Vector3(x, 0, z).distanceTo(SKY_TOWER) < 22) continue;
     const distTower = new THREE.Vector3(x, 0, z).distanceTo(SKY_TOWER);
     const tall = distTower < 90 ? 1.6 : 1.0;
@@ -1967,7 +1967,7 @@ function buildPark(group) {
   buildParkGround(group);
   buildRoad(group, { color: 0x9a6c40, shadeAmt: 0.22, shadeBase: 0.9, followY: true, seed: 23, kind: 'dirt' });
   buildStartLine(group);
-  buildRoadside(group, { offset: 13, postW: 0.28, postH: 1.0, rails: [0.5], color: 0x6e4a28, skipElevated: true });
+  buildRoadside(group, { offset: 14.5, postW: 0.28, postH: 1.0, rails: [0.5], color: 0x6e4a28, skipElevated: true });
   buildParkJumps(group);
   buildVolcanoes(group);
   buildEmeraldLakes(group);
@@ -2016,7 +2016,7 @@ function buildParkGround(group) {
     const p = new THREE.Vector3(x, 0, z);
     let minD = Infinity;
     for (let i = 0; i < N; i += 5) minD = Math.min(minD, p.distanceTo(track.samples[i].pos));
-    if (minD < 16) continue;
+    if (minD < 17.5) continue;
     const patch = new THREE.Mesh(new THREE.CircleGeometry(6 + rng() * 10, 16), lava);
     patch.rotation.x = -Math.PI / 2;
     patch.rotation.z = rng() * Math.PI;
@@ -2125,8 +2125,8 @@ function buildVolcanoes(group) {
 // Tongariro's Emerald Lakes: a couple of small vivid teal pools in the infield.
 function buildEmeraldLakes(group) {
   const lakes = [
-    { f: 0.40, lat: -22, r: 7 },
-    { f: 0.58, lat: 18, r: 5 },
+    { f: 0.40, lat: -25, r: 7 },
+    { f: 0.58, lat: 23, r: 5 },
   ];
   for (const lk of lakes) {
     const s = track.samples[Math.floor(lk.f * N)];
@@ -2179,7 +2179,7 @@ function buildBoulders(group) {
     const p = new THREE.Vector3(x, 0, z);
     let minD = Infinity;
     for (let i = 0; i < N; i += 5) minD = Math.min(minD, p.distanceTo(track.samples[i].pos));
-    if (minD < 15) continue;
+    if (minD < 16.5) continue;
     const r = 0.8 + rng() * 2.6;
     const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(r, 0), rng() < 0.5 ? rockMat : darkRock);
     rock.position.set(x, r * 0.6, z);
@@ -2206,7 +2206,7 @@ function buildTussock(group) {
     const p = new THREE.Vector3(x, 0, z);
     let minD = Infinity;
     for (let i = 0; i < N; i += 6) minD = Math.min(minD, p.distanceTo(track.samples[i].pos));
-    if (minD < 11) continue;
+    if (minD < 12.5) continue;
     dummy.position.set(x, 0.7, z);
     dummy.rotation.y = rng() * Math.PI;
     const sc = 0.7 + rng() * 0.9;
@@ -2234,7 +2234,7 @@ function buildBeach(group) {
   buildBeachGround(group);
   buildRoad(group, { color: 0xb79a6c, shadeAmt: 0.14, shadeBase: 0.93, seed: 31, kind: 'sand' }); // firm wet sand
   buildStartLine(group);
-  buildRoadside(group, { offset: 11.5, postW: 0.22, postH: 0.9, rails: [0.5], color: 0xe8dcc0 });
+  buildRoadside(group, { offset: 13, postW: 0.22, postH: 0.9, rails: [0.5], color: 0xe8dcc0 });
   buildBeachJumps(group);
   buildMauao(group);
   buildDunes(group);
@@ -2354,10 +2354,10 @@ function buildDunes(group) {
 
   // Big scenic dune mounds dotted along the inland edge of the loop (decoration).
   const spots = [
-    { f: 0.16, lat: -22, r: 7, h: 4 },
-    { f: 0.46, lat: -24, r: 9, h: 5 },
-    { f: 0.55, lat: -21, r: 6, h: 3.5 },
-    { f: 0.90, lat: -22, r: 7, h: 4 },
+    { f: 0.16, lat: -23.5, r: 7, h: 4 },
+    { f: 0.46, lat: -25.5, r: 9, h: 5 },
+    { f: 0.55, lat: -22.5, r: 6, h: 3.5 },
+    { f: 0.90, lat: -23.5, r: 7, h: 4 },
   ];
   for (const sp of spots) {
     const idx = Math.floor(sp.f * N);
@@ -2401,18 +2401,18 @@ function buildDunes(group) {
 // same mechanic the farm mud uses via inMud -> surfaceMult). Each dune hugs one
 // road edge so a kart can always sail past on the open side.
 //
-// Spacing maths (roadHalf = 6.5, limit = 11.5):
-//   - A dune sits centred at lateral LAT = roadHalf + 0.5 = 7.0 on its side.
+// Spacing maths (roadHalf = 8, limit = 13):
+//   - A dune sits centred at lateral LAT = roadHalf + 0.5 = 8.5 on its side.
 //   - Its slow-zone radius is MUD_R = 4.0, so the slow zone reaches inward to
-//     LAT - MUD_R = 3.0 from the centre line on that side.
-//   - That leaves a clear corridor from the opposite fence (-11.5) up to +3.0
-//     on the dune's side: ~14.5 m of open track, far wider than a kart, so the
+//     LAT - MUD_R = 4.5 from the centre line on that side.
+//   - That leaves a clear corridor from the opposite fence (-13) up to +4.5
+//     on the dune's side: ~17.5 m of open track, far wider than a kart, so the
 //     racing line is never blocked.
 //   - Successive dunes alternate sides and sit >= ~0.08*N (~44 samples) apart,
 //     so two dunes never pinch the same stretch from both sides at once.
 function buildBumpDunes(group, sand, marram) {
   const MUD_R = 4.0;          // soft-sand slow radius
-  const LAT = track.roadHalf + 0.5; // dune centre just off the road edge (7.0)
+  const LAT = track.roadHalf + 0.5; // dune centre just off the road edge (8.5)
   // f = lap fraction, s = +1 (right of travel) or -1 (left of travel).
   // Sides alternate and gaps are wide; all kept off the jump straight (~0.56-0.72).
   const spots = [
@@ -2572,7 +2572,7 @@ function buildDriftwood(group) {
     const p = new THREE.Vector3(x, 0, z);
     let minD = Infinity;
     for (let i = 0; i < N; i += 5) minD = Math.min(minD, p.distanceTo(track.samples[i].pos));
-    if (minD < 13) continue;
+    if (minD < 14.5) continue;
     if (rng() < 0.6) {
       const stick = new THREE.Mesh(logGeo, rng() < 0.5 ? wood : paleWood);
       stick.rotation.z = Math.PI / 2;
@@ -2608,7 +2608,7 @@ function buildBeachUmbrellas(group) {
     const p = new THREE.Vector3(x, 0, z);
     let minD = Infinity;
     for (let i = 0; i < N; i += 6) minD = Math.min(minD, p.distanceTo(track.samples[i].pos));
-    if (minD < 16) continue;
+    if (minD < 17.5) continue;
     const u = new THREE.Group();
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 3, 8), poleMat);
     pole.position.y = 1.5;
@@ -2645,7 +2645,7 @@ function buildTokyo(group) {
   buildIntersections(group);
   buildStartLine(group);
   buildRoadside(group, {
-    offset: 11, postW: 0.22, postH: 0.9, rails: [0.62], color: 0x9aa1a6,
+    offset: 12.5, postW: 0.22, postH: 0.9, rails: [0.62], color: 0x9aa1a6,
     skipElevated: true, skip: nearTokyoCrossing,
   });
   buildTokyoJumps(group);
@@ -2727,7 +2727,7 @@ function buildIntersections(group) {
     const tanA = track.samples[c.i].tan;
     const tanB = track.samples[c.j].tan;
 
-    const pad = new THREE.Mesh(new THREE.PlaneGeometry(26, 26), padMat);
+    const pad = new THREE.Mesh(new THREE.PlaneGeometry(29, 29), padMat);
     pad.rotation.x = -Math.PI / 2;
     pad.rotation.z = Math.atan2(tanA.x, tanA.z);
     pad.position.set(c.pos.x, 0.048, c.pos.z);
@@ -2742,8 +2742,8 @@ function buildIntersections(group) {
     for (const sa of [-1, 1]) {
       for (const sb of [-1, 1]) {
         const p = c.pos.clone()
-          .addScaledVector(tanA, sa * 11.5)
-          .addScaledVector(tanB, sb * 11.5);
+          .addScaledVector(tanA, sa * 13)
+          .addScaledVector(tanB, sb * 13);
         buildTrafficSignal(group, p, c.pos);
       }
     }
@@ -2755,9 +2755,9 @@ function buildIntersections(group) {
 function buildCrosswalk(group, centre, tan, dir) {
   const mat = new THREE.MeshBasicMaterial({ color: 0xf2f2f2 });
   const normal = new THREE.Vector3(-tan.z, 0, tan.x);
-  const base = centre.clone().addScaledVector(tan, dir * 10);
+  const base = centre.clone().addScaledVector(tan, dir * 11.5);
   const geo = new THREE.BoxGeometry(0.75, 0.02, 2.0);
-  for (let k = -4; k <= 4; k++) {
+  for (let k = -5; k <= 5; k++) {
     const stripe = new THREE.Mesh(geo, mat);
     stripe.position.copy(base).addScaledVector(normal, k * 1.5);
     stripe.position.y = 0.07;
@@ -2986,7 +2986,7 @@ function buildTokyoBuildings(group) {
     tries++;
     const x = (rng() - 0.5) * 380;
     const z = -175 + rng() * 320;
-    if (!tokyoClear(x, z, 14)) continue;
+    if (!tokyoClear(x, z, 15.5)) continue;
     const tall = (x > 40 && z > 20) ? 1.7 : 1.0;
     const w = 6 + rng() * 9;
     const d = 6 + rng() * 9;
@@ -3046,7 +3046,7 @@ function buildNeonSigns(group) {
     if (track.jumps.some((jp) => idxInRange(idx, jp.startIdx - 4, jp.lipIdx + 4))) continue;
     const s = track.samples[idx];
     const p = latPoint(s, (track.roadHalf + 6.5) * side);
-    if (!tokyoClear(p.x, p.z, 10)) { side = -side; continue; }
+    if (!tokyoClear(p.x, p.z, 11.5)) { side = -side; continue; }
 
     const g = new THREE.Group();
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 4, 8), poleMat);
@@ -3105,7 +3105,7 @@ function buildSakura(group) {
 
   // A cluster by the torii gate.
   for (const [x, z] of [[4, 50], [30, 54], [18, 64]]) {
-    if (tokyoClear(x, z, 10)) tree(x, z, 1.0 + rng() * 0.4);
+    if (tokyoClear(x, z, 11.5)) tree(x, z, 1.0 + rng() * 0.4);
   }
 }
 

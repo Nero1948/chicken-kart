@@ -41,7 +41,7 @@ export class Cow {
       break;
     }
     const s = track.samples[idx];
-    const lateral = (Math.random() - 0.5) * 5; // roughly -2.5..2.5 across the road
+    const lateral = (Math.random() - 0.5) * 6; // roughly -3..3 across the road
     this.pos.copy(s.pos).addScaledVector(s.normal, lateral);
     this.pos.y = surfaceY(idx, lateral);
     this.model.position.copy(this.pos);
